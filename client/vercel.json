@@ -10,6 +10,10 @@
       "destination": "https://racahrla-play.vercel.app/jio/$1"
     },
     {
+      "source": "/stream",
+      "destination": "https://racahrla-play.vercel.app/stream"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://racahrla-play.vercel.app/api/$1"
     },

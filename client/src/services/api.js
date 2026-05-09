@@ -1,23 +1,24 @@
 /**
- * client/src/services/api.js — SAAVN ONLY, browser-direct calls
+ * client/src/services/api.js — YouTube-powered full songs
  *
- * MUSIC STRATEGY — tries multiple Saavn API instances directly from the browser.
- * The browser sends real browser headers → no geo-blocking, no CORS issues
- * since all these APIs are public with CORS enabled.
+ * HOW IT WORKS:
+ *  1. Song discovery/search: Saavn APIs (for Indian music catalog + artwork)
+ *  2. Actual audio playback: YouTube via our /stream backend endpoint
+ *     - Backend uses ytdl-core to get audio-only stream URL from YouTube
+ *     - Google CDN serves full-length audio (no 30s limit, no CORS issues)
  *
- * Source chain (all browser-direct, no backend dependency):
- *  1. saavn.sumit.co  — primary public Saavn API wrapper
- *  2. jiosaavn-api-privatechal.vercel.app — mirror instance
- *  3. /api/search   — our own backend (last resort, backend chain)
+ * FLOW when a song card is clicked:
+ *  a) Show song metadata from Saavn (title, artist, image) immediately
+ *  b) Fetch YouTube stream URL in background: GET /stream?q=Title+Artist
+ *  c) HTML5 Audio plays the Google CDN URL — full song, always works
  *
- * NO iTunes. NO Deezer. NO 30s previews.
  * AUTH always goes through Express backend (/auth/*).
  */
 import axios from 'axios';
 
-// ─── Session cache (10-min TTL) ───────────────────────────────────────────────
+// ─── Cache ────────────────────────────────────────────────────────────────────
 const CACHE_TTL    = 10 * 60 * 1000;
-const CACHE_PREFIX = 'rp:v5:saavn';
+const CACHE_PREFIX = 'rp:v6:yt';
 function cKey(k, p) { return `${CACHE_PREFIX}:${k}:${JSON.stringify(p || {})}` }
 function cGet(k) {
   try {
@@ -33,9 +34,7 @@ function cSet(k, v) {
 }
 
 // ─── HTTP clients ─────────────────────────────────────────────────────────────
-
-// Backend (auth + last-resort music)
-const http = axios.create({ baseURL: '', timeout: 20000 });
+const http = axios.create({ baseURL: '', timeout: 25000 });
 http.interceptors.response.use(
   r => r.data,
   err => Promise.reject(new Error(
@@ -43,16 +42,13 @@ http.interceptors.response.use(
   ))
 );
 
-// Direct browser calls to public Saavn API instances (CORS-enabled)
-// WHY direct: the browser has real TLS fingerprint, APIs have CORS headers
-// List ordered by reliability — we try them in order
+// Direct calls to public Saavn API instances for song discovery ONLY
 const SAAVN_INSTANCES = [
   'https://saavn.sumit.co/api',
   'https://jiosaavn-api-privatechal.vercel.app/api',
-  'https://saavn-api-tan.vercel.app/api',
 ].map(baseURL => axios.create({ baseURL, timeout: 12000 }));
 
-// ─── Normalizer ───────────────────────────────────────────────────────────────
+// ─── Normalizers ──────────────────────────────────────────────────────────────
 function pickUrl(arr, qualities) {
   if (!Array.isArray(arr)) return null;
   for (const q of qualities) {
@@ -66,42 +62,78 @@ function cleanText(str) {
     .replace(/&quot;/g, '"').replace(/&amp;/g, '&')
     .replace(/&#039;/g, "'").replace(/<[^>]+>/g, '').trim();
 }
+
+// Normalize a song from Saavn — NOTE: streamUrl will be REPLACED with YouTube URL on play
 function normalizeSaavn(s) {
   if (!s?.id) return null;
-  const streamUrl = pickUrl(s.downloadUrl, ['320kbps', '160kbps', '96kbps']);
-  if (!streamUrl) return null;
+  // Use Saavn URL as initial streamUrl (may be 30s) — YouTube URL will replace it on play
+  const saavnUrl = pickUrl(s.downloadUrl, ['320kbps', '160kbps', '96kbps']);
   return {
-    id:        s.id,
-    source:    'saavn',
-    title:     cleanText(s.name || s.title || ''),
-    artist:    cleanText(
+    id:           s.id,
+    source:       'saavn',
+    title:        cleanText(s.name || s.title || ''),
+    artist:       cleanText(
       s.artists?.primary?.map(a => a.name).join(', ') ||
       s.primaryArtists || s.subtitle?.split(' - ')[0] || 'Unknown Artist'
     ),
-    album:     cleanText(s.album?.name || s.album || ''),
-    duration:  Number(s.duration) || 0,
-    image:     pickUrl(s.image, ['500x500', '150x150']) ||
-               'https://placehold.co/300x300/0e0e14/1DB954?text=%F0%9F%8E%B5',
-    streamUrl,
-    year:      s.year || '',
-    language:  s.language || '',
-    hasLyrics: !!s.hasLyrics,
-    playCount: s.playCount || 0,
-    label:     s.label || '',
+    album:        cleanText(s.album?.name || s.album || ''),
+    duration:     Number(s.duration) || 0,
+    image:        pickUrl(s.image, ['500x500', '150x150']) ||
+                  'https://placehold.co/300x300/0e0e14/1DB954?text=%F0%9F%8E%B5',
+    streamUrl:    saavnUrl || `__pending__`, // replaced by YouTube URL on play
+    year:         s.year || '',
+    language:     s.language || '',
+    hasLyrics:    !!s.hasLyrics,
+    playCount:    s.playCount || 0,
+    label:        s.label || '',
+    _needsYtStream: true, // flag to trigger YouTube stream fetch on play
   };
 }
 
-// Normalize songs from our backend jio-direct (already normalized)
-function normalizeBackend(s) {
-  if (!s?.streamUrl || !s?.id) return null;
-  return { ...s, source: 'saavn' };
+// ─── YouTube stream fetcher ───────────────────────────────────────────────────
+/**
+ * Get full YouTube audio stream URL for a song.
+ * Called by PlayerContext when a song is about to play.
+ * Returns the streamUrl to replace the Saavn/placeholder URL.
+ */
+export async function getYouTubeStreamUrl(title, artist) {
+  const q   = `${title} ${artist} official audio`.trim();
+  const key = cKey('yt', { q });
+  const hit = cGet(key);
+  if (hit) return hit;
+
+  try {
+    const data = await http.get('/stream', { params: { q } });
+    if (data?.streamUrl) {
+      // Cache for 4 hours (YouTube URLs expire after ~6h)
+      const result = { streamUrl: data.streamUrl, duration: data.duration };
+      cSet(key, result);
+      return result;
+    }
+  } catch (err) {
+    console.warn('⚠️ YouTube stream fetch failed:', err.message);
+  }
+  return null;
 }
 
-function saavnOnly(songs = []) {
-  return songs.filter(s => s?.streamUrl && s.source === 'saavn');
+// ─── Saavn discovery (metadata + artwork only) ────────────────────────────────
+async function trySaavnInstances(path, params) {
+  for (let i = 0; i < SAAVN_INSTANCES.length; i++) {
+    try {
+      const r     = await SAAVN_INSTANCES[i].get(path, { params });
+      const songs = (r.data?.data?.results || []).map(normalizeSaavn).filter(s => s && s.title);
+      if (songs.length > 0) {
+        console.log(`✅ saavn-instance[${i}] served ${songs.length} songs`);
+        return { songs, total: r.data?.data?.total || songs.length };
+      }
+    } catch (err) {
+      console.warn(`⚠️ saavn-instance[${i}] failed: ${err.message}`);
+    }
+  }
+  // Backend fallback
+  return null;
 }
 
-// ─── Trending query map ───────────────────────────────────────────────────────
 const TRENDING_QUERIES = {
   hindi:     'bollywood hits 2024 arijit singh',
   telugu:    'telugu hits 2024 pushpa allu arjun',
@@ -111,23 +143,6 @@ const TRENDING_QUERIES = {
   punjabi:   'punjabi hits 2024 diljit dosanjh',
 };
 
-// ─── Try each Saavn instance in order ────────────────────────────────────────
-async function trySaavnInstances(path, params) {
-  for (let i = 0; i < SAAVN_INSTANCES.length; i++) {
-    try {
-      const r    = await SAAVN_INSTANCES[i].get(path, { params });
-      const songs = (r.data?.data?.results || []).map(normalizeSaavn).filter(Boolean);
-      if (songs.length > 0) {
-        console.log(`✅ saavn-instance[${i}] served ${path}`);
-        return { songs, total: r.data?.data?.total || songs.length };
-      }
-    } catch (err) {
-      console.warn(`⚠️ saavn-instance[${i}] (${SAAVN_INSTANCES[i].defaults.baseURL}) failed: ${err.message}`);
-    }
-  }
-  return null;
-}
-
 // ─── Music API: search ────────────────────────────────────────────────────────
 export async function searchSongs(query, page = 1, limit = 20) {
   if (!query?.trim()) return { success: true, total: 0, page, results: [] };
@@ -135,7 +150,7 @@ export async function searchSongs(query, page = 1, limit = 20) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  // Try all Saavn API instances directly from browser
+  // Try Saavn instances (for metadata)
   const direct = await trySaavnInstances('/search/songs', { query: query.trim(), page, limit });
   if (direct) {
     const out = { success: true, total: direct.total, page, results: direct.songs };
@@ -143,15 +158,15 @@ export async function searchSongs(query, page = 1, limit = 20) {
     return out;
   }
 
-  // Last resort: our Express backend (tries jio-direct → saavn mirrors)
+  // Backend fallback
   try {
-    const data = await http.get('/api/search', { params: { query: query.trim(), page, limit } });
-    const results = saavnOnly((data?.results || []).map(s => normalizeBackend(s) || s));
-    const out = { success: true, total: data?.total || results.length, page, results };
+    const data    = await http.get('/api/search', { params: { query: query.trim(), page, limit } });
+    const results = (data?.results || []).filter(s => s?.title);
+    const out     = { success: true, total: data?.total || results.length, page, results };
     if (results.length > 0) cSet(key, out);
     return out;
   } catch (err) {
-    console.error('❌ All sources failed for search:', query, err.message);
+    console.error('❌ All search sources failed:', err.message);
     return { success: false, total: 0, page, results: [] };
   }
 }
@@ -162,9 +177,7 @@ export async function getTrending(lang = 'hindi', limit = 20) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  const q = TRENDING_QUERIES[lang] || `${lang} hits 2024`;
-
-  // Try all Saavn API instances directly from browser
+  const q      = TRENDING_QUERIES[lang] || `${lang} hits 2024`;
   const direct = await trySaavnInstances('/search/songs', { query: q, page: 1, limit });
   if (direct) {
     const out = { success: true, language: lang, results: direct.songs };
@@ -172,15 +185,13 @@ export async function getTrending(lang = 'hindi', limit = 20) {
     return out;
   }
 
-  // Backend fallback
   try {
-    const data = await http.get('/api/trending', { params: { lang, limit } });
-    const results = saavnOnly((data?.results || []).map(s => normalizeBackend(s) || s));
-    const out = { success: true, language: lang, results };
+    const data    = await http.get('/api/trending', { params: { lang, limit } });
+    const results = (data?.results || []).filter(s => s?.title);
+    const out     = { success: true, language: lang, results };
     if (results.length > 0) cSet(key, out);
     return out;
   } catch (err) {
-    console.error('❌ All sources failed for trending:', lang, err.message);
     return { success: false, results: [] };
   }
 }
@@ -191,31 +202,16 @@ export async function getSongDetails(id) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  for (let i = 0; i < SAAVN_INSTANCES.length; i++) {
+  for (const instance of SAAVN_INSTANCES) {
     try {
-      const r    = await SAAVN_INSTANCES[i].get(`/songs/${id}`);
+      const r    = await instance.get(`/songs/${id}`);
       const raw  = r.data?.data;
       const s    = Array.isArray(raw) ? raw[0] : raw;
       const song = normalizeSaavn(s);
-      if (song?.streamUrl) {
-        const out = { success: true, song };
-        cSet(key, out);
-        return out;
-      }
+      if (song) { const out = { success: true, song }; cSet(key, out); return out; }
     } catch {}
   }
-
-  try {
-    const data = await http.get(`/api/song/${id}`);
-    const song = normalizeBackend(data?.song || data);
-    if (song?.streamUrl) {
-      const out = { success: true, song };
-      cSet(key, out);
-      return out;
-    }
-  } catch {}
-
-  return { success: false, song: null, error: 'Song unavailable from Saavn' };
+  return { success: false, song: null };
 }
 
 // ─── Suggestions ──────────────────────────────────────────────────────────────
@@ -224,28 +220,13 @@ export async function getSuggestions(id) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  for (let i = 0; i < SAAVN_INSTANCES.length; i++) {
+  for (const instance of SAAVN_INSTANCES) {
     try {
-      const r     = await SAAVN_INSTANCES[i].get(`/songs/${id}/suggestions`);
-      const songs = (r.data?.data || []).map(normalizeSaavn).filter(Boolean);
-      if (songs.length) {
-        const out = { success: true, results: songs };
-        cSet(key, out);
-        return out;
-      }
+      const r     = await instance.get(`/songs/${id}/suggestions`);
+      const songs = (r.data?.data || []).map(normalizeSaavn).filter(s => s?.title);
+      if (songs.length) { const out = { success: true, results: songs }; cSet(key, out); return out; }
     } catch {}
   }
-
-  try {
-    const data  = await http.get('/api/suggestions', { params: { id } });
-    const songs = saavnOnly(data?.results || []);
-    if (songs.length) {
-      const out = { success: true, results: songs };
-      cSet(key, out);
-      return out;
-    }
-  } catch {}
-
   return { success: false, results: [] };
 }
 
@@ -253,17 +234,12 @@ export async function getSuggestions(id) {
 export async function searchAlbums(query, limit = 10) {
   for (const instance of SAAVN_INSTANCES) {
     try {
-      const r = await instance.get('/search/albums', { params: { query, limit } });
+      const r       = await instance.get('/search/albums', { params: { query, limit } });
       const results = r.data?.data?.results || [];
       if (results.length) return { success: true, results };
     } catch {}
   }
-  try {
-    const data = await http.get('/api/albums', { params: { query, limit } });
-    return { success: true, results: data?.results || [] };
-  } catch {
-    return { success: false, results: [] };
-  }
+  return { success: false, results: [] };
 }
 
 // ─── Auth API ─────────────────────────────────────────────────────────────────

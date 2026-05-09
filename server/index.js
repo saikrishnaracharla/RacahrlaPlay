@@ -99,9 +99,29 @@ app.get('/jio/trending', async (req, res) => {
 });
 
 
+// ── YouTube audio stream endpoint ─────────────────────────────────────────────
+// GET /stream?q=Song+Title+Artist
+// Returns a full audio stream URL sourced from YouTube via ytdl-core.
+// The browser plays this URL directly (Google CDN) — full songs, no 30s limit.
+const { getYouTubeStream } = require('./services/youtubeService');
+
+app.get('/stream', async (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (!q) return res.status(400).json({ error: 'q (query) is required' });
+  try {
+    const stream = await getYouTubeStream(q);
+    res.setHeader('Cache-Control', 'public, max-age=14400'); // 4h
+    res.json({ success: true, ...stream });
+  } catch (err) {
+    console.error(`❌ /stream failed for "${q}": ${err.message}`);
+    res.status(502).json({ success: false, error: err.message });
+  }
+});
+
 // ── Error handling ────────────────────────────────────────────────────────────
 app.use(notFound);
 app.use(errorHandler);
+
 
 // ── Local dev server (NOT used by Vercel — Vercel uses module.exports) ────────
 if (!process.env.VERCEL) {

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useRef, useEffect, useCallback } from 'react';
+import { getYouTubeStreamUrl } from '../services/api';
 
 // ─── Initial State ─────────────────────────────────────────────────────────────
 const initialState = {
@@ -148,11 +149,11 @@ export function PlayerProvider({ children }) {
 
   // ─── Actions ────────────────────────────────────────────────────────────────
 
-  const playSong = useCallback((song, queue = [], index = 0) => {
+  const playSong = useCallback(async (song, queue = [], index = 0) => {
     const audio = audioRef.current;
 
-    if (!song?.streamUrl) {
-      dispatch({ type: ACTIONS.SET_ERROR, payload: 'No stream URL available for this song.' });
+    if (!song?.title) {
+      dispatch({ type: ACTIONS.SET_ERROR, payload: 'No song data available.' });
       return;
     }
 
@@ -163,11 +164,36 @@ export function PlayerProvider({ children }) {
     }
 
     audio.pause();
-    audio.src = song.streamUrl;
-    audio.load();
-
     dispatch({ type: ACTIONS.SET_SONG, payload: { song, index } });
     dispatch({ type: ACTIONS.SET_QUEUE, payload: queue.length > 0 ? queue : [song] });
+    dispatch({ type: ACTIONS.SET_LOADING, payload: true });
+
+    // Fetch YouTube stream URL for full-length audio
+    // Falls back to Saavn URL if YouTube fetch fails
+    try {
+      const ytResult = await getYouTubeStreamUrl(song.title, song.artist);
+      if (ytResult?.streamUrl) {
+        audio.src = ytResult.streamUrl;
+        if (ytResult.duration && ytResult.duration > 30) {
+          dispatch({ type: ACTIONS.SET_DURATION, payload: ytResult.duration });
+        }
+      } else if (song.streamUrl && song.streamUrl !== '__pending__') {
+        // Fallback to Saavn URL
+        audio.src = song.streamUrl;
+      } else {
+        dispatch({ type: ACTIONS.SET_ERROR, payload: 'Could not load stream. Try another song.' });
+        return;
+      }
+    } catch {
+      if (song.streamUrl && song.streamUrl !== '__pending__') {
+        audio.src = song.streamUrl;
+      } else {
+        dispatch({ type: ACTIONS.SET_ERROR, payload: 'Could not load stream. Try another song.' });
+        return;
+      }
+    }
+
+    audio.load();
   }, []);
 
   const togglePlay = useCallback(() => {
@@ -183,7 +209,7 @@ export function PlayerProvider({ children }) {
     }
   }, []);
 
-  const playNext = useCallback(() => {
+  const playNext = useCallback(async () => {
     const { queue, currentIndex, isShuffle } = stateRef.current;
     if (queue.length === 0) return;
 
@@ -198,30 +224,41 @@ export function PlayerProvider({ children }) {
     if (nextSong) {
       const audio = audioRef.current;
       audio.pause();
-      audio.src = nextSong.streamUrl;
-      audio.load();
       dispatch({ type: ACTIONS.SET_SONG, payload: { song: nextSong, index: nextIndex } });
+      dispatch({ type: ACTIONS.SET_LOADING, payload: true });
+      try {
+        const ytResult = await getYouTubeStreamUrl(nextSong.title, nextSong.artist);
+        audio.src = ytResult?.streamUrl || nextSong.streamUrl || '';
+      } catch {
+        audio.src = nextSong.streamUrl || '';
+      }
+      audio.load();
     }
   }, []);
 
-  const playPrev = useCallback(() => {
+  const playPrev = useCallback(async () => {
     const { queue, currentIndex, currentTime } = stateRef.current;
     if (queue.length === 0) return;
 
-    // If more than 3 seconds in, restart current song
     if (currentTime > 3) {
       audioRef.current.currentTime = 0;
       return;
     }
 
     const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
-    const prevSong = queue[prevIndex];
+    const prevSong  = queue[prevIndex];
     if (prevSong) {
       const audio = audioRef.current;
       audio.pause();
-      audio.src = prevSong.streamUrl;
-      audio.load();
       dispatch({ type: ACTIONS.SET_SONG, payload: { song: prevSong, index: prevIndex } });
+      dispatch({ type: ACTIONS.SET_LOADING, payload: true });
+      try {
+        const ytResult = await getYouTubeStreamUrl(prevSong.title, prevSong.artist);
+        audio.src = ytResult?.streamUrl || prevSong.streamUrl || '';
+      } catch {
+        audio.src = prevSong.streamUrl || '';
+      }
+      audio.load();
     }
   }, []);
 
