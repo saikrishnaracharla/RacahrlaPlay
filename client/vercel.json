@@ -7,11 +7,11 @@
     },
     {
       "source": "/api/(.*)",
-      "destination": "https://racharlaplay-server.vercel.app/api/$1"
+      "destination": "https://racahrla-play.vercel.app/api/$1"
     },
     {
       "source": "/auth/(.*)",
-      "destination": "https://racharlaplay-server.vercel.app/auth/$1"
+      "destination": "https://racahrla-play.vercel.app/auth/$1"
     },
     {
       "source": "/(.*)",
