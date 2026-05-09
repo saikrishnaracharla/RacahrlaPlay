@@ -8,6 +8,7 @@
     "dev": "nodemon index.js"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "axios": "^1.6.7",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
@@ -19,7 +20,7 @@
     "mongoose": "^9.6.2",
     "morgan": "^1.10.0",
     "node-cache": "^5.1.2",
-    "ytdl-core": "^4.11.5",
+    "yt-search": "^2.13.1",
     "ytsr": "^3.8.4"
   },
   "devDependencies": {

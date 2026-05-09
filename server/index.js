@@ -99,28 +99,68 @@ app.get('/jio/trending', async (req, res) => {
 });
 
 
-// ── YouTube audio stream endpoint ─────────────────────────────────────────────
-// GET /stream?q=Song+Title+Artist
-// Returns a full audio stream URL sourced from YouTube via ytdl-core.
-// The browser plays this URL directly (Google CDN) — full songs, no 30s limit.
+// ── YouTube audio endpoints ───────────────────────────────────────────────────
 const { getYouTubeStream } = require('./services/youtubeService');
+const ytdl = require('@distube/ytdl-core');
 
+// GET /stream?q=Song+Title+Artist
+// Returns { videoId, duration, title } — client uses videoId to play via /stream-proxy
 app.get('/stream', async (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q) return res.status(400).json({ error: 'q (query) is required' });
   try {
-    const stream = await getYouTubeStream(q);
-    res.setHeader('Cache-Control', 'public, max-age=14400'); // 4h
-    res.json({ success: true, ...stream });
+    const data = await getYouTubeStream(q);
+    // Build the proxy URL the client will use to stream audio
+    const proxyUrl = `/stream-proxy?id=${encodeURIComponent(data.videoId)}`;
+    res.setHeader('Cache-Control', 'public, max-age=43200'); // 12h (videoId stable)
+    res.json({ success: true, ...data, streamUrl: proxyUrl });
   } catch (err) {
     console.error(`❌ /stream failed for "${q}": ${err.message}`);
     res.status(502).json({ success: false, error: err.message });
   }
 });
 
+// GET /stream-proxy?id=VIDEO_ID
+// Pipes YouTube audio through our server so the client doesn't need CORS or stream URL hacks.
+// Uses @distube/ytdl-core with headers that bypass bot detection.
+app.get('/stream-proxy', async (req, res) => {
+  const id = (req.query.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'id (videoId) is required' });
+
+  try {
+    const url  = `https://www.youtube.com/watch?v=${id}`;
+    const opts = {
+      quality: 'highestaudio',
+      filter:  'audioonly',
+      requestOptions: {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Cookie': '', // empty cookie — public videos don't need auth
+        },
+      },
+    };
+
+    // Set headers before piping
+    res.setHeader('Content-Type', 'audio/mp4');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    const stream = ytdl(url, opts);
+    stream.on('error', (err) => {
+      console.error(`❌ stream-proxy error for ${id}: ${err.message}`);
+      if (!res.headersSent) res.status(502).json({ error: err.message });
+    });
+    stream.pipe(res);
+  } catch (err) {
+    console.error(`❌ /stream-proxy failed for ${id}: ${err.message}`);
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // ── Error handling ────────────────────────────────────────────────────────────
 app.use(notFound);
 app.use(errorHandler);
+
 
 
 // ── Local dev server (NOT used by Vercel — Vercel uses module.exports) ────────
