@@ -6,6 +6,10 @@
       "destination": "https://racahrla-play.vercel.app/saavn/$1"
     },
     {
+      "source": "/jio/(.*)",
+      "destination": "https://racahrla-play.vercel.app/jio/$1"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://racahrla-play.vercel.app/api/$1"
     },

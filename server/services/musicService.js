@@ -1,21 +1,23 @@
 /**
  * server/services/musicService.js — ORCHESTRATOR
  *
- * Fallback Chain:
- *   1. saavn.sumit.co  → 320kbps full streams, Indian music (best quality)
- *   2. iTunes          → 30s previews, confirmed working, great Indian catalogue
- *   3. Deezer          → 30s previews, backup to iTunes
+ * Fallback Chain (in order):
+ *   1. jioSaavnDirect  → Calls JioSaavn's own internal API (api.php) with DES
+ *                         decryption. Full 320kbps streams. No 3rd-party dep.
+ *   2. saavn wrappers  → saavn.sumit.co / mirrors (if #1 fails for any reason)
+ *   3. iTunes          → 30s previews (absolute last resort)
+ *   4. Deezer          → 30s previews (last-last resort)
  *
- * If saavn is CF-blocked (happens after repeated requests), iTunes takes over
- * immediately — music ALWAYS loads.
+ * WHY #1 first: The shared API wrappers get rate-limited/CF-blocked under load.
+ * JioSaavn's own API has effectively unlimited capacity (it serves their website).
  */
-const saavn  = require('./saavnService');
-const itunes = require('./itunesService');
-const deezer = require('./deezerService');
-const cache  = require('../cache/nodeCache');
+const saavn   = require('./saavnService');
+const jio     = require('./jioSaavnDirect');
+const itunes  = require('./itunesService');
+const deezer  = require('./deezerService');
+const cache   = require('../cache/nodeCache');
 
-// Always allow preview fallbacks — 30-second previews are better than a blank
-// screen. Set DISABLE_PREVIEW_FALLBACKS=true in .env to opt out during testing.
+// Only disable previews if explicitly set (default: allow as last resort)
 const ALLOW_PREVIEW_FALLBACKS = process.env.DISABLE_PREVIEW_FALLBACKS !== 'true';
 
 function hasSongs(r) {
@@ -57,7 +59,10 @@ const LANG_GENRE = {
 
 async function search(query, page = 1, limit = 20) {
   const chain = [
-    ['saavn', () => saavn.search(query, page, limit)],
+    // PRIMARY: JioSaavn's own API with DES decryption → full 320kbps songs
+    ['jio-direct', () => jio.search(query, page, limit)],
+    // SECONDARY: 3rd-party Saavn wrappers (may be rate-limited)
+    ['saavn-wrapper', () => saavn.search(query, page, limit)],
   ];
 
   if (ALLOW_PREVIEW_FALLBACKS) {
@@ -71,9 +76,22 @@ async function search(query, page = 1, limit = 20) {
 }
 
 async function trending(lang = 'hindi', limit = 20) {
+  const QUERIES = {
+    hindi:     'bollywood top songs 2024 arijit singh',
+    telugu:    'telugu blockbuster 2024 pushpa allu arjun',
+    tamil:     'kollywood superhit 2024 anirudh',
+    malayalam: 'malayalam superhit 2024',
+    kannada:   'kannada sandalwood 2024 yash',
+    punjabi:   'punjabi top 2024 diljit dosanjh',
+  };
+  const query = QUERIES[lang] || `${lang} trending songs 2024`;
   const genre = LANG_GENRE[lang] || lang;
+
   const chain = [
-    ['saavn', () => saavn.trending(lang, limit)],
+    // PRIMARY: JioSaavn direct
+    ['jio-direct', () => jio.trending(query, limit)],
+    // SECONDARY: 3rd-party wrapper
+    ['saavn-wrapper', () => saavn.trending(lang, limit)],
   ];
 
   if (ALLOW_PREVIEW_FALLBACKS) {
@@ -87,7 +105,11 @@ async function trending(lang = 'hindi', limit = 20) {
 }
 
 async function song(id) {
-  // Only saavn has full song details — if blocked, return null gracefully
+  // Try JioSaavn direct first, then saavn wrapper
+  try {
+    const s = await jio.songById(id);
+    if (s) return s;
+  } catch {}
   try { return await saavn.song(id); }
   catch { return null; }
 }

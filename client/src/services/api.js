@@ -1,15 +1,18 @@
 /**
  * client/src/services/api.js
  *
- * MUSIC STRATEGY — 2-layer fallback:
+ * MUSIC STRATEGY — 3-layer fallback (all aiming for full songs):
  *
- *  1. Browser → saavn.sumit.co  (DIRECT, no proxy)
- *     Browsers have real TLS fingerprint → Cloudflare allows.
- *     Returns FULL songs (320kbps streams).
+ *  1. Browser → /jio/search  (Backend → JioSaavn own API + DES decryption)
+ *     JioSaavn's own api.php endpoint — same as their website uses.
+ *     Returns FULL 320kbps songs. Our own DES decryption, no 3rd-party.
  *
- *  2. Browser → /api/* (Express backend)
- *     Backend → iTunes 30-second previews (guaranteed available).
- *     Only used if saavn direct call fails.
+ *  2. Browser → /saavn/*  (Backend → saavn.sumit.co proxy with browser headers)
+ *     Third-party API wrapper — may be rate-limited but is a known good source.
+ *
+ *  3. Browser → /api/*  (Express backend full music service chain)
+ *     Backend tries jio-direct → saavn-wrapper → iTunes → Deezer.
+ *     iTunes/Deezer are 30s previews, only as absolute last resort.
  *
  * AUTH — always goes through Express backend (/auth/*).
  */
@@ -121,6 +124,23 @@ async function saavnTrendingDirect(lang = 'hindi', limit = 20) {
   return { success: true, language: lang, results: songs };
 }
 
+// ─── JioSaavn Direct: search via backend DES-decrypting service ───────────────
+// WHY: /jio/search calls JioSaavn's own api.php with DES decryption.
+// No 3rd-party dependency, effectively unlimited, always full songs.
+async function jioSearchDirect(query, page = 1, limit = 20) {
+  const r = await http.get('/jio/search', { params: { query, page, limit } });
+  const results = playableSongsOnly(r?.results || []);
+  if (!results.length) throw new Error('JioSaavn direct: no results');
+  return { success: true, total: r?.total || results.length, page, results };
+}
+
+async function jioTrendingDirect(query, limit = 20) {
+  const r = await http.get('/jio/trending', { params: { query, limit } });
+  const results = playableSongsOnly(r?.results || []);
+  if (!results.length) throw new Error('JioSaavn direct trending: no results');
+  return { success: true, results };
+}
+
 // ─── Music API: search (saavn direct → backend fallback) ─────────────────────
 export async function searchSongs(query, page = 1, limit = 20) {
   if (!query?.trim()) return { success: true, total: 0, page, results: [] };
@@ -128,15 +148,23 @@ export async function searchSongs(query, page = 1, limit = 20) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  // Try saavn direct from browser first (full songs)
+  // Layer 1: JioSaavn direct (our own DES-decrypting backend service)
+  try {
+    const out = await jioSearchDirect(query.trim(), page, limit);
+    if (out.results.length > 0) { cSet(key, out); return out; }
+  } catch (err) {
+    console.warn('⚠️ JioSaavn direct failed, trying saavn proxy:', err.message);
+  }
+
+  // Layer 2: saavn.sumit.co via backend proxy (3rd-party wrapper)
   try {
     const out = await saavnSearchDirect(query.trim(), page, limit);
     if (out.results.length > 0) { cSet(key, out); return out; }
   } catch (err) {
-    console.warn('⚠️ Saavn direct failed, using backend fallback:', err.message);
+    console.warn('⚠️ Saavn proxy failed, using backend music service:', err.message);
   }
 
-  // Fallback: Express backend → Saavn (via backend proxy) + iTunes/Deezer previews
+  // Layer 3: Full backend music service (jio → saavn-wrapper → iTunes → Deezer)
   try {
     const data = await http.get('/api/search', { params: { query: query.trim(), page, limit } });
     const out  = {
@@ -148,26 +176,43 @@ export async function searchSongs(query, page = 1, limit = 20) {
     if (out.results.length > 0) cSet(key, out);
     return out;
   } catch (err) {
-    console.error('searchSongs backend also failed:', err.message);
+    console.error('searchSongs all layers failed:', err.message);
     return { success: false, total: 0, page, results: [], error: err.message };
   }
 }
 
-// ─── Music API: trending (saavn direct → backend fallback) ────────────────────
+// ─── Music API: trending (jio-direct → saavn proxy → backend fallback) ────────
 export async function getTrending(lang = 'hindi', limit = 20) {
+  const TRENDING_QUERIES = {
+    hindi:     'bollywood top songs 2024 arijit singh',
+    telugu:    'telugu blockbuster 2024 pushpa allu arjun',
+    tamil:     'kollywood superhit 2024 anirudh',
+    malayalam: 'malayalam superhit 2024',
+    kannada:   'kannada sandalwood 2024 yash',
+    punjabi:   'punjabi top 2024 diljit dosanjh',
+  };
   const key = cKey('trending', { lang, limit });
   const hit = cGet(key);
   if (hit) return hit;
 
-  // Try saavn direct first
+  // Layer 1: JioSaavn direct
+  try {
+    const q = TRENDING_QUERIES[lang] || `${lang} trending songs 2024`;
+    const out = await jioTrendingDirect(q, limit);
+    if (out.results.length > 0) { cSet(key, out); return out; }
+  } catch (err) {
+    console.warn('⚠️ JioSaavn trending direct failed:', err.message);
+  }
+
+  // Layer 2: saavn proxy
   try {
     const out = await saavnTrendingDirect(lang, limit);
     if (out.results.length > 0) { cSet(key, out); return out; }
   } catch (err) {
-    console.warn('⚠️ Saavn trending direct failed, using backend:', err.message);
+    console.warn('⚠️ Saavn trending proxy failed, using backend:', err.message);
   }
 
-  // Fallback
+  // Layer 3: full backend
   try {
     const data = await http.get('/api/trending', { params: { lang, limit } });
     const out  = { success: true, language: lang, results: playableSongsOnly(data?.results || []) };

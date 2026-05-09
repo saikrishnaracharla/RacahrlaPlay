@@ -69,6 +69,36 @@ app.use('/auth',  authLimiter, authRoutes);
 // requests originating from Vercel edge servers.
 app.use('/saavn', saavnProxy);
 
+// ── JioSaavn direct search endpoint ──────────────────────────────────────────
+// WHY: Exposes our DES-decrypting jioSaavnDirect service over /jio/search
+// so the client can call it directly for full songs without going through
+// the full musicService chain.
+const jio = require('./services/jioSaavnDirect');
+
+app.get('/jio/search', async (req, res) => {
+  const { query, page = 1, limit = 20 } = req.query;
+  if (!query?.trim()) return res.status(400).json({ error: 'query is required' });
+  try {
+    const data = await jio.search(query.trim(), +page, Math.min(+limit, 30));
+    res.setHeader('Cache-Control', 'public, max-age=120');
+    res.json({ success: true, total: data.total, page: +page, results: data.songs || [] });
+  } catch (err) {
+    res.status(502).json({ success: false, error: err.message, results: [] });
+  }
+});
+
+app.get('/jio/trending', async (req, res) => {
+  const { query = 'bollywood top songs 2024', limit = 20 } = req.query;
+  try {
+    const songs = await jio.trending(query, Math.min(+limit, 30));
+    res.setHeader('Cache-Control', 'public, max-age=180');
+    res.json({ success: true, results: songs || [] });
+  } catch (err) {
+    res.status(502).json({ success: false, error: err.message, results: [] });
+  }
+});
+
+
 // ── Error handling ────────────────────────────────────────────────────────────
 app.use(notFound);
 app.use(errorHandler);
