@@ -44,6 +44,12 @@ export default defineConfig({
         changeOrigin: true,
         secure:       false,
       },
+      // JioSaavn direct DES-decrypt endpoint (see server/index.js /jio/search)
+      '/jio': {
+        target:       'http://localhost:5000',
+        changeOrigin: true,
+        secure:       false,
+      },
     },
   },
 });

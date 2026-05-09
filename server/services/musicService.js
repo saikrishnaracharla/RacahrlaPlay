@@ -1,13 +1,15 @@
 /**
- * server/services/musicService.js — ORCHESTRATOR (Saavn-only)
+ * server/services/musicService.js — ORCHESTRATOR (Saavn-only, no previews)
  *
- * Source chain — ALL return full JioSaavn songs (no 30s previews):
- *   1. jioSaavnDirect → Calls jiosaavn.com/api.php + DES decryption (PRIMARY)
- *                        Full 320kbps streams, no 3rd-party dependency.
- *   2. saavnService   → saavn.sumit.co wrapper (FALLBACK if #1 fails)
+ * Backend source chain — ALL return full JioSaavn songs:
+ *   1. jioSaavnDirect → jiosaavn.com/api.php + DES (works if Vercel IP not geo-blocked)
+ *   2. saavnService   → saavn.sumit.co + mirrors including saavn.dev
  *
- * iTunes / Deezer are COMPLETELY REMOVED — they only give 30s previews.
- * If both Saavn sources fail, return empty results (better than playing wrong content).
+ * NOTE: The primary music source is actually the CLIENT-SIDE saavn.dev call
+ * (see client/src/services/api.js). This backend chain is only used when the
+ * browser-direct calls to saavn.dev fail (e.g. CORS issues on some browsers).
+ *
+ * iTunes / Deezer are completely removed — they only give 30s previews.
  */
 const jio   = require('./jioSaavnDirect');
 const saavn = require('./saavnService');
@@ -39,7 +41,7 @@ async function tryChain(label, fns) {
       console.warn(`⚠️  [${label}] ${name} failed: ${err.message}`);
     }
   }
-  console.error(`❌ [${label}] all Saavn sources failed — returning empty`);
+  console.error(`❌ [${label}] all backend Saavn sources failed`);
   return { total: 0, songs: [], results: [] };
 }
 
