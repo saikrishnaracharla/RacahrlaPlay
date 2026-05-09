@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/saavn/(.*)",
+      "destination": "https://saavn.sumit.co/api/$1"
+    },
+    {
+      "source": "/auth/(.*)",
+      "destination": "https://YOUR-BACKEND.onrender.com/auth/$1"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "https://YOUR-BACKEND.onrender.com/api/$1"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/saavn/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Referer",         "value": "https://www.jiosaavn.com/" },
+        { "key": "Origin",          "value": "https://www.jiosaavn.com" },
+        { "key": "Accept-Language", "value": "en-IN,en;q=0.9,hi;q=0.8" }
+      ]
+    }
+  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install"
+}
