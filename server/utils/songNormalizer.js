@@ -21,6 +21,15 @@ function cleanText(str) {
   return (str || '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'").trim();
 }
 
+function durationToSeconds(value) {
+  if (typeof value === 'number') return value;
+  if (!value) return 0;
+  if (/^\d+$/.test(String(value))) return Number(value);
+  const parts = String(value).split(':').map(Number);
+  if (parts.some(Number.isNaN)) return 0;
+  return parts.reduce((total, part) => (total * 60) + part, 0);
+}
+
 /** Normalize song from saavn.sumit.co format */
 function fromSaavn(s) {
   if (!s?.id) return null;
@@ -42,6 +51,35 @@ function fromSaavn(s) {
     playCount: s.playCount || 0,
     label:     s.label || '',
     _raw:      undefined, // strip raw to save memory
+  };
+}
+
+/** Normalize song from jiosaavn-api.vercel.app legacy format */
+function fromLegacySaavn(s) {
+  if (!s?.id) return null;
+  const mediaUrls = s.media_urls || {};
+  const streamUrl =
+    mediaUrls['320_KBPS'] ||
+    mediaUrls['160_KBPS'] ||
+    mediaUrls['96_KBPS'] ||
+    s.media_url;
+
+  if (!streamUrl) return null;
+
+  return {
+    id:        s.id,
+    source:    'saavn',
+    title:     cleanText(s.song || s.title),
+    artist:    cleanText(s.primary_artists || s.singers || s.description?.split(' · ')[1] || 'Unknown Artist'),
+    album:     cleanText(s.album || ''),
+    duration:  durationToSeconds(s.duration),
+    image:     s.images?.['500x500'] || s.image || fallbackImg(),
+    streamUrl,
+    year:      s.year ? String(s.year) : '',
+    language:  s.language || '',
+    hasLyrics: !!s.has_lyrics,
+    playCount: 0,
+    label:     s.label || '',
   };
 }
 
@@ -90,4 +128,4 @@ function fallbackImg() {
   return 'https://placehold.co/300x300/0e0e14/1DB954?text=🎵';
 }
 
-module.exports = { fromSaavn, fromDeezer, fromAudius, fallbackImg };
+module.exports = { fromSaavn, fromLegacySaavn, fromDeezer, fromAudius, fallbackImg };

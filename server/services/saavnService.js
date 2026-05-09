@@ -12,12 +12,16 @@
  * A single sequential client looks like a human browsing, not a scraper.
  */
 const { buildClient } = require('../utils/httpClient');
-const { fromSaavn }   = require('../utils/songNormalizer');
+const { fromSaavn, fromLegacySaavn } = require('../utils/songNormalizer');
 const cache           = require('../cache/nodeCache');
 
 const BASE = process.env.SAAVN_API_BASE || 'https://saavn.sumit.co/api';
 const client = buildClient(BASE, 'https://www.jiosaavn.com/');
 client.defaults.timeout = 8000; // fail fast → triggers fallback sooner
+
+const LEGACY_BASE = process.env.SAAVN_LEGACY_API_BASE || 'https://jiosaavn-api.vercel.app';
+const legacyClient = buildClient(LEGACY_BASE, 'https://www.jiosaavn.com/');
+legacyClient.defaults.timeout = 12000;
 
 // ── Simple request queue — serialises calls to one at a time ─────────────────
 // WHY: Parallel requests from same IP trigger CF rate-limit instantly.
@@ -61,12 +65,46 @@ async function saavnGet(url, params = {}, retries = 1) {
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
+async function legacyGet(url, params = {}) {
+  const r = await legacyClient.get(url, { params });
+  if (r.data?.status === false) throw new Error(r.data?.message || 'Legacy Saavn error');
+  return r.data;
+}
+
+async function legacySong(id) {
+  const data = await legacyGet('/song', { id });
+  return fromLegacySaavn(data);
+}
+
+async function legacySearch(query, limit = 20) {
+  const data = await legacyGet('/search', { query });
+  const results = (data?.results || []).slice(0, limit);
+  const songs = [];
+
+  for (const item of results) {
+    try {
+      const song = await legacySong(item.id);
+      if (song) songs.push(song);
+    } catch (err) {
+      console.warn(`Legacy Saavn song failed (${item.id}): ${err.message}`);
+    }
+  }
+
+  return { total: data?.results?.length || songs.length, songs };
+}
+
 async function search(query, page = 1, limit = 20) {
   const key = `saavn:search:${query}:${page}:${limit}`;
   return cache.wrap(key, async () => {
-    const data = await saavnGet('/search/songs', { query, page, limit });
-    const songs = (data?.data?.results || []).map(fromSaavn).filter(Boolean);
-    return { total: data?.data?.total || songs.length, songs };
+    try {
+      const data = await saavnGet('/search/songs', { query, page, limit });
+      const songs = (data?.data?.results || []).map(fromSaavn).filter(Boolean);
+      if (songs.length) return { total: data?.data?.total || songs.length, songs };
+    } catch (err) {
+      console.warn(`Primary Saavn search failed (${err.message}), trying legacy full-song API`);
+    }
+
+    return legacySearch(query, limit);
   }, cache.TTLS.SEARCH);
 }
 
@@ -82,18 +120,32 @@ async function trending(lang = 'hindi', limit = 20) {
   const q   = QUERIES[lang] || `${lang} trending songs 2024`;
   const key = `saavn:trending:${lang}:${limit}`;
   return cache.wrap(key, async () => {
-    const data = await saavnGet('/search/songs', { query: q, page: 1, limit });
-    return (data?.data?.results || []).map(fromSaavn).filter(Boolean);
+    try {
+      const data = await saavnGet('/search/songs', { query: q, page: 1, limit });
+      const songs = (data?.data?.results || []).map(fromSaavn).filter(Boolean);
+      if (songs.length) return songs;
+    } catch (err) {
+      console.warn(`Primary Saavn trending failed (${err.message}), trying legacy full-song API`);
+    }
+
+    return (await legacySearch(q, limit)).songs;
   }, cache.TTLS.TRENDING);
 }
 
 async function song(id) {
   const key = `saavn:song:${id}`;
   return cache.wrap(key, async () => {
-    const data = await saavnGet(`/songs/${id}`);
-    const raw  = data?.data;
-    const s    = Array.isArray(raw) ? raw[0] : raw;
-    return fromSaavn(s);
+    try {
+      const data = await saavnGet(`/songs/${id}`);
+      const raw  = data?.data;
+      const s    = Array.isArray(raw) ? raw[0] : raw;
+      const song = fromSaavn(s);
+      if (song) return song;
+    } catch (err) {
+      console.warn(`Primary Saavn song failed (${err.message}), trying legacy full-song API`);
+    }
+
+    return legacySong(id);
   }, cache.TTLS.SONG);
 }
 
