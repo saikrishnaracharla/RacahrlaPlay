@@ -2,7 +2,7 @@ require('dotenv').config();
 const express     = require('express');
 const cors        = require('cors');
 const morgan      = require('morgan');
-const { connect, isConnected } = require('./db');
+const { connect, isConnected, lastError } = require('./db');
 const musicRoutes = require('./routes/music');
 const authRoutes  = require('./routes/auth');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -46,10 +46,13 @@ app.use(async (req, res, next) => {
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
+  const connected = isConnected();
   res.json({
     status:   'ok',
     message:  '🎵 Racharlaplay API running',
-    database: isConnected() ? 'MongoDB Atlas ✅' : 'Disconnected ❌',
+    database: connected ? 'MongoDB Atlas ✅' : 'Disconnected ❌',
+    dbError:  connected ? null : (lastError() || 'Unknown - check Vercel logs'),
+    mongoUri: process.env.MONGODB_URI ? `set (${process.env.MONGODB_URI.slice(0, 30)}...)` : 'NOT SET ❌',
     node:     process.version,
     uptime:   Math.round(process.uptime()) + 's',
     env:      process.env.NODE_ENV || 'development',
