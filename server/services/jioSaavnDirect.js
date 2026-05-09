@@ -3,33 +3,28 @@
  *
  * WHY this exists:
  *  All third-party Saavn API wrappers (saavn.sumit.co, saavn.dev, etc.) are
- *  shared public instances that get rate-limited and Cloudflare-blocked when
- *  traffic spikes. This service calls JioSaavn's own internal web API directly,
- *  the same way the official jiosaavn.com website does. We then decrypt the
- *  encrypted_media_url ourselves using DES-ECB to get the saavncdn.com CDN URL.
+ *  shared public instances that get rate-limited and Cloudflare-blocked under load.
+ *  This service calls JioSaavn's own internal web API directly, the same way the
+ *  official jiosaavn.com website does. We then decrypt the encrypted_media_url
+ *  ourselves using DES-ECB (via des.js pure JS library) to get the saavncdn.com
+ *  CDN URL — full songs, no 3rd-party dependency.
  *
- * STRATEGY:
- *  1. Call https://www.jiosaavn.com/api.php with the same parameters the
- *     official web player uses (ctx=web6dot0, api_version=4, etc.)
- *  2. Decrypt the `encrypted_media_url` field using DES key "38346591"
- *  3. Return a normalized song object identical to what saavnService.js returns
- *     (same shape — frontend doesn't know the difference)
+ * KEY FINDINGS from testing (Node.js v22 / OpenSSL 3):
+ *  1. The `encrypted_media_url` is in `song.more_info.encrypted_media_url`,
+ *     NOT in the top-level song object.
+ *  2. Node.js crypto does NOT support des-ecb in OpenSSL 3 → use des.js (pure JS).
+ *  3. search.getResults returns full song data INCLUDING encrypted URLs — no 2nd call needed.
  *
  * RATE LIMITS:
- *  JioSaavn's own API allows the same traffic that their website serves to
- *  millions of users. By mimicking a browser session we have effectively
- *  unlimited access.
+ *  JioSaavn's own API allows the same traffic their website serves to millions.
+ *  We mimic a browser session with matching headers.
  */
 
-const axios         = require('axios');
-const { buildClient }  = require('../utils/httpClient');
-const { decryptUrl }   = require('../utils/jioDecrypt');
-const cache            = require('../cache/nodeCache');
+const { buildClient } = require('../utils/httpClient');
+const { decryptUrl }  = require('../utils/jioDecrypt');
+const cache           = require('../cache/nodeCache');
 
-// JioSaavn's internal API — same as used by jiosaavn.com website
-const JIO_BASE = 'https://www.jiosaavn.com/api.php';
-
-// Use browser-like client targeting JioSaavn's own domain
+// JioSaavn's internal API — same endpoint used by jiosaavn.com website
 const jioClient = buildClient('https://www.jiosaavn.com', 'https://www.jiosaavn.com/');
 jioClient.defaults.timeout = 12000;
 
@@ -48,60 +43,66 @@ function cleanText(str = '') {
     .replace(/&quot;/g, '"')
     .replace(/&amp;/g, '&')
     .replace(/&#039;/g, "'")
-    .replace(/<[^>]+>/g, '') // strip any HTML tags
+    .replace(/<[^>]+>/g, '')
     .trim();
 }
 
-function durationToSec(s) {
-  if (!s) return 0;
-  if (typeof s === 'number') return s;
-  const p = String(s).split(':').map(Number);
-  if (p.some(isNaN)) return 0;
-  return p.reduce((t, n) => t * 60 + n, 0);
-}
-
 /**
- * Normalize a raw JioSaavn song object into our standard schema.
- * The raw object comes from JioSaavn's internal API (/api.php).
+ * Normalize a raw JioSaavn song object from search.getResults into our schema.
+ *
+ * IMPORTANT: the search API puts most data inside `more_info`, including the
+ * encrypted_media_url. The top-level object only has id, title, image, etc.
  */
 function normalizeSong(raw) {
   if (!raw || !raw.id) return null;
 
-  // Decrypt stream URL
-  const streamUrl =
-    decryptUrl(raw.encrypted_media_url) ||
-    decryptUrl(raw.more_info?.encrypted_media_url);
+  const mi = raw.more_info || {};
 
-  if (!streamUrl) return null; // no playable URL → skip
+  // Decrypt stream URL from more_info (where JioSaavn search results put it)
+  const streamUrl = decryptUrl(mi.encrypted_media_url)
+    || decryptUrl(mi.encrypted_cache_url);
 
-  // Pick best album art (try 500x500 → 150x150 → any)
-  const imageBase = raw.image || '';
-  const image = imageBase
-    .replace('-50x50.jpg', '-500x500.jpg')
-    .replace('-150x150.jpg', '-500x500.jpg')
-    || 'https://placehold.co/300x300/0e0e14/1DB954?text=🎵';
+  if (!streamUrl) {
+    // If no stream URL, this song can't be played — skip it
+    return null;
+  }
+
+  // Image: prefer the provided image, upgrade to higher resolution
+  const rawImage = raw.image || '';
+  const image = rawImage
+    ? rawImage.replace(/-150x150\.jpg$/, '-500x500.jpg')
+               .replace(/-50x50\.jpg$/,  '-500x500.jpg')
+    : 'https://placehold.co/300x300/0e0e14/1DB954?text=%F0%9F%8E%B5';
+
+  // Artists: try artistMap first, then fallback to plain strings
+  const artistMap = mi.artistMap || {};
+  const primaryArtists = artistMap.primary_artists || [];
+  const artistName = primaryArtists.length > 0
+    ? primaryArtists.map(a => a.name).join(', ')
+    : cleanText(mi.music || mi.singers || mi.primary_artists || raw.subtitle?.split(' - ')[0] || 'Unknown Artist');
 
   return {
     id:        raw.id,
     source:    'saavn',
-    title:     cleanText(raw.song || raw.title || ''),
-    artist:    cleanText(raw.primary_artists || raw.singers || raw.more_info?.artistMap?.primary_artists?.map(a => a.name).join(', ') || 'Unknown Artist'),
-    album:     cleanText(raw.album || raw.more_info?.album || ''),
-    duration:  durationToSec(raw.duration),
+    title:     cleanText(raw.title || raw.song || ''),
+    artist:    artistName,
+    album:     cleanText(mi.album || ''),
+    duration:  Number(mi.duration) || 0,
     image,
     streamUrl,
-    year:      raw.year ? String(raw.year) : '',
+    year:      raw.year || '',
     language:  raw.language || '',
-    hasLyrics: raw.has_lyrics === 'true' || raw.has_lyrics === true,
+    hasLyrics: mi.has_lyrics === 'true' || mi.has_lyrics === true,
     playCount: Number(raw.play_count) || 0,
-    label:     raw.label || '',
+    label:     mi.label || '',
   };
 }
 
 // ── API calls ──────────────────────────────────────────────────────────────────
 
 /**
- * Search JioSaavn's internal API directly
+ * Search JioSaavn's internal API directly.
+ * Uses search.getResults which returns full song data including encrypted URLs.
  */
 async function searchDirect(query, page = 1, limit = 20) {
   const params = {
@@ -113,34 +114,20 @@ async function searchDirect(query, page = 1, limit = 20) {
   };
 
   const r = await jioClient.get('/api.php', { params });
-  const results = r.data?.results || [];
+  const results = (r.data && r.data.results) || [];
   const songs = results.map(normalizeSong).filter(Boolean);
-  return { total: Number(r.data?.total) || songs.length, songs };
+
+  console.log(`[jio-direct] search "${query}": ${results.length} raw → ${songs.length} with stream URLs`);
+
+  return { total: Number(r.data && r.data.total) || songs.length, songs };
 }
 
 /**
- * Get trending / top songs by search query
+ * Get trending songs by search query
  */
 async function trendingDirect(query, limit = 20) {
   const data = await searchDirect(query, 1, limit);
   return data.songs;
-}
-
-/**
- * Get full song details (with stream URL) by ID from JioSaavn
- */
-async function songDetailsDirect(id) {
-  const params = {
-    ...BASE_PARAMS,
-    __call:   'song.getDetails',
-    pids:     id,
-    // Request all bitrates so we can pick 320kbps
-    bitrate:  '320',
-  };
-
-  const r = await jioClient.get('/api.php', { params });
-  const raw = r.data?.[id] || Object.values(r.data || {})[0];
-  return normalizeSong(raw);
 }
 
 // ── Exported cached functions ──────────────────────────────────────────────────
@@ -151,7 +138,7 @@ async function search(query, page = 1, limit = 20) {
     const data = await searchDirect(query, page, limit);
     if (!data.songs.length) throw new Error('JioSaavn direct: empty results');
     return data;
-  }, cache.TTLS?.SEARCH || 300);
+  }, cache.TTLS && cache.TTLS.SEARCH || 300);
 }
 
 async function trending(query, limit = 20) {
@@ -160,12 +147,22 @@ async function trending(query, limit = 20) {
     const songs = await trendingDirect(query, limit);
     if (!songs.length) throw new Error('JioSaavn direct: empty trending');
     return songs;
-  }, cache.TTLS?.TRENDING || 600);
+  }, cache.TTLS && cache.TTLS.TRENDING || 600);
 }
 
 async function songById(id) {
   const key = `jio:song:${id}`;
-  return cache.wrap(key, () => songDetailsDirect(id), cache.TTLS?.SONG || 3600);
+  return cache.wrap(key, async () => {
+    // Use song.getDetails to get by ID
+    const params = {
+      ...BASE_PARAMS,
+      __call: 'song.getDetails',
+      pids:   id,
+    };
+    const r = await jioClient.get('/api.php', { params });
+    const songs = (r.data && r.data.songs) || [];
+    return normalizeSong(songs[0]);
+  }, cache.TTLS && cache.TTLS.SONG || 3600);
 }
 
 module.exports = { search, trending, songById, searchDirect, trendingDirect };
