@@ -1,27 +1,23 @@
 /**
- * client/src/services/api.js  — SAAVN ONLY (no iTunes/Deezer previews)
+ * client/src/services/api.js — SAAVN ONLY, browser-direct calls
  *
- * MUSIC STRATEGY — 3 Saavn sources, all return FULL songs:
+ * MUSIC STRATEGY — tries multiple Saavn API instances directly from the browser.
+ * The browser sends real browser headers → no geo-blocking, no CORS issues
+ * since all these APIs are public with CORS enabled.
  *
- *  1. saavn.dev  (BROWSER → direct, CORS-enabled, Indian servers)
- *     Called directly from the browser — user is likely in India →
- *     no geo-blocking, full 320kbps songs, fast.
+ * Source chain (all browser-direct, no backend dependency):
+ *  1. saavn.sumit.co  — primary public Saavn API wrapper
+ *  2. jiosaavn-api-privatechal.vercel.app — mirror instance
+ *  3. /api/search   — our own backend (last resort, backend chain)
  *
- *  2. /saavn/*   (BROWSER → our backend → saavn.sumit.co proxy)
- *     Backend adds browser headers to bypass CF. May be rate-limited.
- *
- *  3. /jio/search  (BROWSER → our backend → jiosaavn.com/api.php + DES)
- *     Direct JioSaavn API. Works if Vercel IP is not geo-blocked.
- *
- * NO iTunes. NO Deezer. If all Saavn sources fail → empty list (not previews).
- *
- * AUTH — always goes through Express backend (/auth/*).
+ * NO iTunes. NO Deezer. NO 30s previews.
+ * AUTH always goes through Express backend (/auth/*).
  */
 import axios from 'axios';
 
-// ─── Session-level client cache (10-min TTL) ─────────────────────────────────
+// ─── Session cache (10-min TTL) ───────────────────────────────────────────────
 const CACHE_TTL    = 10 * 60 * 1000;
-const CACHE_PREFIX = 'rp:v4:saavn';
+const CACHE_PREFIX = 'rp:v5:saavn';
 function cKey(k, p) { return `${CACHE_PREFIX}:${k}:${JSON.stringify(p || {})}` }
 function cGet(k) {
   try {
@@ -32,13 +28,13 @@ function cGet(k) {
     return data;
   } catch { return null; }
 }
-function cSet(k, data) {
-  try { sessionStorage.setItem(k, JSON.stringify({ data, ts: Date.now() })); } catch {}
+function cSet(k, v) {
+  try { sessionStorage.setItem(k, JSON.stringify({ data: v, ts: Date.now() })); } catch {}
 }
 
 // ─── HTTP clients ─────────────────────────────────────────────────────────────
 
-// Backend (auth + fallback music)
+// Backend (auth + last-resort music)
 const http = axios.create({ baseURL: '', timeout: 20000 });
 http.interceptors.response.use(
   r => r.data,
@@ -47,18 +43,16 @@ http.interceptors.response.use(
   ))
 );
 
-// saavn.dev — CORS-enabled public API, called directly from browser
-// WHY direct: browser is in India → no geo-block, no rate-limit from server IP
-const saavnDev = axios.create({
-  baseURL: 'https://saavn.dev/api',
-  timeout: 14000,
-});
+// Direct browser calls to public Saavn API instances (CORS-enabled)
+// WHY direct: the browser has real TLS fingerprint, APIs have CORS headers
+// List ordered by reliability — we try them in order
+const SAAVN_INSTANCES = [
+  'https://saavn.sumit.co/api',
+  'https://jiosaavn-api-privatechal.vercel.app/api',
+  'https://saavn-api-tan.vercel.app/api',
+].map(baseURL => axios.create({ baseURL, timeout: 12000 }));
 
-// saavn.sumit.co via our backend proxy (Vercel edge adds browser headers)
-const saavnProxy = axios.create({ baseURL: '/saavn', timeout: 12000 });
-
-// ─── Normalizers ──────────────────────────────────────────────────────────────
-
+// ─── Normalizer ───────────────────────────────────────────────────────────────
 function pickUrl(arr, qualities) {
   if (!Array.isArray(arr)) return null;
   for (const q of qualities) {
@@ -72,8 +66,6 @@ function cleanText(str) {
     .replace(/&quot;/g, '"').replace(/&amp;/g, '&')
     .replace(/&#039;/g, "'").replace(/<[^>]+>/g, '').trim();
 }
-
-// Normalize song from saavn.dev / saavn.sumit.co (same response shape)
 function normalizeSaavn(s) {
   if (!s?.id) return null;
   const streamUrl = pickUrl(s.downloadUrl, ['320kbps', '160kbps', '96kbps']);
@@ -99,13 +91,12 @@ function normalizeSaavn(s) {
   };
 }
 
-// Normalize songs from our backend's jio-direct service (already normalized shape)
+// Normalize songs from our backend jio-direct (already normalized)
 function normalizeBackend(s) {
   if (!s?.streamUrl || !s?.id) return null;
-  return { ...s, source: 'saavn' }; // ensure source tag
+  return { ...s, source: 'saavn' };
 }
 
-// Only accept songs with a stream URL from Saavn (not previews)
 function saavnOnly(songs = []) {
   return songs.filter(s => s?.streamUrl && s.source === 'saavn');
 }
@@ -120,53 +111,21 @@ const TRENDING_QUERIES = {
   punjabi:   'punjabi hits 2024 diljit dosanjh',
 };
 
-// ─── Source 1: saavn.dev (browser-direct, CORS-enabled) ──────────────────────
-async function devSearch(query, page = 1, limit = 20) {
-  const r = await saavnDev.get('/search/songs', {
-    params: { query, page, limit },
-  });
-  const songs = (r.data?.data?.results || []).map(normalizeSaavn).filter(Boolean);
-  if (!songs.length) throw new Error('saavn.dev: no results');
-  return { success: true, total: r.data?.data?.total || songs.length, page, results: songs };
-}
-async function devTrending(lang = 'hindi', limit = 20) {
-  const q = TRENDING_QUERIES[lang] || `${lang} hits 2024`;
-  const r = await saavnDev.get('/search/songs', {
-    params: { query: q, page: 1, limit },
-  });
-  const songs = (r.data?.data?.results || []).map(normalizeSaavn).filter(Boolean);
-  if (!songs.length) throw new Error('saavn.dev trending: no results');
-  return { success: true, language: lang, results: songs };
-}
-
-// ─── Source 2: saavn.sumit.co via backend proxy ───────────────────────────────
-async function proxySearch(query, page = 1, limit = 20) {
-  const r = await saavnProxy.get('/search/songs', { params: { query, page, limit } });
-  const songs = (r.data?.data?.results || []).map(normalizeSaavn).filter(Boolean);
-  if (!songs.length) throw new Error('saavn proxy: no results');
-  return { success: true, total: r.data?.data?.total || songs.length, page, results: songs };
-}
-async function proxyTrending(lang = 'hindi', limit = 20) {
-  const q = TRENDING_QUERIES[lang] || `${lang} hits 2024`;
-  const r = await saavnProxy.get('/search/songs', { params: { query: q, page: 1, limit } });
-  const songs = (r.data?.data?.results || []).map(normalizeSaavn).filter(Boolean);
-  if (!songs.length) throw new Error('saavn proxy trending: no results');
-  return { success: true, language: lang, results: songs };
-}
-
-// ─── Source 3: JioSaavn direct via backend (DES decrypt) ─────────────────────
-async function jioSearch(query, page = 1, limit = 20) {
-  const r = await http.get('/jio/search', { params: { query, page, limit } });
-  const results = (r?.results || []).map(normalizeBackend).filter(Boolean);
-  if (!results.length) throw new Error('jio-direct: no results');
-  return { success: true, total: r?.total || results.length, page, results };
-}
-async function jioTrending(lang = 'hindi', limit = 20) {
-  const q = TRENDING_QUERIES[lang] || `${lang} hits 2024`;
-  const r = await http.get('/jio/trending', { params: { query: q, limit } });
-  const results = (r?.results || []).map(normalizeBackend).filter(Boolean);
-  if (!results.length) throw new Error('jio-direct trending: no results');
-  return { success: true, language: lang, results };
+// ─── Try each Saavn instance in order ────────────────────────────────────────
+async function trySaavnInstances(path, params) {
+  for (let i = 0; i < SAAVN_INSTANCES.length; i++) {
+    try {
+      const r    = await SAAVN_INSTANCES[i].get(path, { params });
+      const songs = (r.data?.data?.results || []).map(normalizeSaavn).filter(Boolean);
+      if (songs.length > 0) {
+        console.log(`✅ saavn-instance[${i}] served ${path}`);
+        return { songs, total: r.data?.data?.total || songs.length };
+      }
+    } catch (err) {
+      console.warn(`⚠️ saavn-instance[${i}] (${SAAVN_INSTANCES[i].defaults.baseURL}) failed: ${err.message}`);
+    }
+  }
+  return null;
 }
 
 // ─── Music API: search ────────────────────────────────────────────────────────
@@ -176,30 +135,25 @@ export async function searchSongs(query, page = 1, limit = 20) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  const sources = [
-    ['saavn.dev',     () => devSearch(query.trim(), page, limit)],
-    ['saavn-proxy',   () => proxySearch(query.trim(), page, limit)],
-    ['jio-direct',    () => jioSearch(query.trim(), page, limit)],
-  ];
-
-  for (const [name, fn] of sources) {
-    try {
-      const out = await fn();
-      const results = saavnOnly(out.results || []);
-      if (results.length > 0) {
-        const final = { ...out, results };
-        cSet(key, final);
-        console.log(`✅ search served by ${name}`);
-        return final;
-      }
-      console.warn(`⚠️ ${name}: empty results`);
-    } catch (err) {
-      console.warn(`⚠️ ${name} failed: ${err.message}`);
-    }
+  // Try all Saavn API instances directly from browser
+  const direct = await trySaavnInstances('/search/songs', { query: query.trim(), page, limit });
+  if (direct) {
+    const out = { success: true, total: direct.total, page, results: direct.songs };
+    cSet(key, out);
+    return out;
   }
 
-  console.error('❌ All Saavn sources failed for search:', query);
-  return { success: false, total: 0, page, results: [] };
+  // Last resort: our Express backend (tries jio-direct → saavn mirrors)
+  try {
+    const data = await http.get('/api/search', { params: { query: query.trim(), page, limit } });
+    const results = saavnOnly((data?.results || []).map(s => normalizeBackend(s) || s));
+    const out = { success: true, total: data?.total || results.length, page, results };
+    if (results.length > 0) cSet(key, out);
+    return out;
+  } catch (err) {
+    console.error('❌ All sources failed for search:', query, err.message);
+    return { success: false, total: 0, page, results: [] };
+  }
 }
 
 // ─── Music API: trending ──────────────────────────────────────────────────────
@@ -208,30 +162,27 @@ export async function getTrending(lang = 'hindi', limit = 20) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  const sources = [
-    ['saavn.dev',     () => devTrending(lang, limit)],
-    ['saavn-proxy',   () => proxyTrending(lang, limit)],
-    ['jio-direct',    () => jioTrending(lang, limit)],
-  ];
+  const q = TRENDING_QUERIES[lang] || `${lang} hits 2024`;
 
-  for (const [name, fn] of sources) {
-    try {
-      const out = await fn();
-      const results = saavnOnly(out.results || []);
-      if (results.length > 0) {
-        const final = { ...out, results };
-        cSet(key, final);
-        console.log(`✅ trending served by ${name}`);
-        return final;
-      }
-      console.warn(`⚠️ ${name} trending: empty`);
-    } catch (err) {
-      console.warn(`⚠️ ${name} trending failed: ${err.message}`);
-    }
+  // Try all Saavn API instances directly from browser
+  const direct = await trySaavnInstances('/search/songs', { query: q, page: 1, limit });
+  if (direct) {
+    const out = { success: true, language: lang, results: direct.songs };
+    cSet(key, out);
+    return out;
   }
 
-  console.error('❌ All Saavn sources failed for trending:', lang);
-  return { success: false, results: [] };
+  // Backend fallback
+  try {
+    const data = await http.get('/api/trending', { params: { lang, limit } });
+    const results = saavnOnly((data?.results || []).map(s => normalizeBackend(s) || s));
+    const out = { success: true, language: lang, results };
+    if (results.length > 0) cSet(key, out);
+    return out;
+  } catch (err) {
+    console.error('❌ All sources failed for trending:', lang, err.message);
+    return { success: false, results: [] };
+  }
 }
 
 // ─── Song details ─────────────────────────────────────────────────────────────
@@ -240,33 +191,20 @@ export async function getSongDetails(id) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  // Try saavn.dev first (browser direct)
-  try {
-    const r    = await saavnDev.get(`/songs/${id}`);
-    const raw  = r.data?.data;
-    const s    = Array.isArray(raw) ? raw[0] : raw;
-    const song = normalizeSaavn(s);
-    if (song?.streamUrl) {
-      const out = { success: true, song };
-      cSet(key, out);
-      return out;
-    }
-  } catch {}
+  for (let i = 0; i < SAAVN_INSTANCES.length; i++) {
+    try {
+      const r    = await SAAVN_INSTANCES[i].get(`/songs/${id}`);
+      const raw  = r.data?.data;
+      const s    = Array.isArray(raw) ? raw[0] : raw;
+      const song = normalizeSaavn(s);
+      if (song?.streamUrl) {
+        const out = { success: true, song };
+        cSet(key, out);
+        return out;
+      }
+    } catch {}
+  }
 
-  // Try saavn proxy
-  try {
-    const r    = await saavnProxy.get(`/songs/${id}`);
-    const raw  = r.data?.data;
-    const s    = Array.isArray(raw) ? raw[0] : raw;
-    const song = normalizeSaavn(s);
-    if (song?.streamUrl) {
-      const out = { success: true, song };
-      cSet(key, out);
-      return out;
-    }
-  } catch {}
-
-  // Backend fallback
   try {
     const data = await http.get(`/api/song/${id}`);
     const song = normalizeBackend(data?.song || data);
@@ -286,25 +224,26 @@ export async function getSuggestions(id) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  // saavn.dev
-  try {
-    const r     = await saavnDev.get(`/songs/${id}/suggestions`);
-    const songs = (r.data?.data || []).map(normalizeSaavn).filter(Boolean);
-    if (songs.length) { const out = { success: true, results: songs }; cSet(key, out); return out; }
-  } catch {}
+  for (let i = 0; i < SAAVN_INSTANCES.length; i++) {
+    try {
+      const r     = await SAAVN_INSTANCES[i].get(`/songs/${id}/suggestions`);
+      const songs = (r.data?.data || []).map(normalizeSaavn).filter(Boolean);
+      if (songs.length) {
+        const out = { success: true, results: songs };
+        cSet(key, out);
+        return out;
+      }
+    } catch {}
+  }
 
-  // saavn proxy
-  try {
-    const r     = await saavnProxy.get(`/songs/${id}/suggestions`);
-    const songs = (r.data?.data || []).map(normalizeSaavn).filter(Boolean);
-    if (songs.length) { const out = { success: true, results: songs }; cSet(key, out); return out; }
-  } catch {}
-
-  // Backend
   try {
     const data  = await http.get('/api/suggestions', { params: { id } });
     const songs = saavnOnly(data?.results || []);
-    if (songs.length) { const out = { success: true, results: songs }; cSet(key, out); return out; }
+    if (songs.length) {
+      const out = { success: true, results: songs };
+      cSet(key, out);
+      return out;
+    }
   } catch {}
 
   return { success: false, results: [] };
@@ -312,16 +251,13 @@ export async function getSuggestions(id) {
 
 // ─── Albums ───────────────────────────────────────────────────────────────────
 export async function searchAlbums(query, limit = 10) {
-  try {
-    const r = await saavnDev.get('/search/albums', { params: { query, limit } });
-    const results = r.data?.data?.results || [];
-    if (results.length) return { success: true, results };
-  } catch {}
-  try {
-    const r = await saavnProxy.get('/search/albums', { params: { query, limit } });
-    const results = r.data?.data?.results || [];
-    if (results.length) return { success: true, results };
-  } catch {}
+  for (const instance of SAAVN_INSTANCES) {
+    try {
+      const r = await instance.get('/search/albums', { params: { query, limit } });
+      const results = r.data?.data?.results || [];
+      if (results.length) return { success: true, results };
+    } catch {}
+  }
   try {
     const data = await http.get('/api/albums', { params: { query, limit } });
     return { success: true, results: data?.results || [] };
