@@ -17,7 +17,8 @@ import axios from 'axios';
 
 // ─── Session-level client cache (10-min TTL) ─────────────────────────────────
 const CACHE_TTL = 10 * 60 * 1000;
-function cKey(k, p) { return `rp:${k}:${JSON.stringify(p || {})}` }
+const CACHE_PREFIX = 'rp:v2:full';
+function cKey(k, p) { return `${CACHE_PREFIX}:${k}:${JSON.stringify(p || {})}` }
 function cGet(k) {
   try {
     const raw = sessionStorage.getItem(k);
@@ -81,6 +82,14 @@ function normalizeSaavn(s) {
   };
 }
 
+function isFullSong(song) {
+  return !!song?.streamUrl && song.source === 'saavn';
+}
+
+function fullSongsOnly(songs = []) {
+  return songs.filter(isFullSong);
+}
+
 // ─── Saavn direct: search ─────────────────────────────────────────────────────
 async function saavnSearchDirect(query, page = 1, limit = 20) {
   const r = await saavnHttp.get('/search/songs', { params: { query, page, limit } });
@@ -128,7 +137,7 @@ export async function searchSongs(query, page = 1, limit = 20) {
       success: data?.success ?? true,
       total:   data?.total   || (data?.results?.length ?? 0),
       page,
-      results: data?.results || [],
+      results: fullSongsOnly(data?.results || []),
     };
     if (out.results.length > 0) cSet(key, out);
     return out;
@@ -155,7 +164,7 @@ export async function getTrending(lang = 'hindi', limit = 20) {
   // Fallback
   try {
     const data = await http.get('/api/trending', { params: { lang, limit } });
-    const out  = { success: true, language: lang, results: data?.results || [] };
+    const out  = { success: true, language: lang, results: fullSongsOnly(data?.results || []) };
     if (out.results.length > 0) cSet(key, out);
     return out;
   } catch (err) {
@@ -179,9 +188,13 @@ export async function getSongDetails(id) {
   // Fallback to backend
   try {
     const data = await http.get(`/api/song/${id}`);
-    const out  = { success: true, song: data?.song || data };
-    cSet(key, out);
-    return out;
+    const song = data?.song || data;
+    if (isFullSong(song)) {
+      const out = { success: true, song };
+      cSet(key, out);
+      return out;
+    }
+    throw new Error('Full song stream is unavailable right now.');
   } catch (err) {
     return { success: false, song: null, error: err.message };
   }
@@ -202,7 +215,7 @@ export async function getSuggestions(id) {
   } catch {}
   try {
     const data = await http.get('/api/suggestions', { params: { id } });
-    const out  = { success: true, results: data?.results || [] };
+    const out  = { success: true, results: fullSongsOnly(data?.results || []) };
     if (out.results.length > 0) cSet(key, out);
     return out;
   } catch (err) {

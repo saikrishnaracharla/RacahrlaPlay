@@ -14,6 +14,8 @@ const itunes = require('./itunesService');
 const deezer = require('./deezerService');
 const cache  = require('../cache/nodeCache');
 
+const ALLOW_PREVIEW_FALLBACKS = process.env.ALLOW_PREVIEW_FALLBACKS === 'true';
+
 function hasSongs(r) {
   if (!r) return false;
   if (Array.isArray(r)) return r.length > 0;
@@ -52,20 +54,34 @@ const LANG_GENRE = {
 };
 
 async function search(query, page = 1, limit = 20) {
-  return tryChain(`search:${query}`, [
-    ['saavn',  () => saavn.search(query, page, limit)],
-    ['itunes', () => itunes.search(query, limit)],
-    ['deezer', () => deezer.search(query, limit)],
-  ]);
+  const chain = [
+    ['saavn', () => saavn.search(query, page, limit)],
+  ];
+
+  if (ALLOW_PREVIEW_FALLBACKS) {
+    chain.push(
+      ['itunes-preview', () => itunes.search(query, limit)],
+      ['deezer-preview', () => deezer.search(query, limit)],
+    );
+  }
+
+  return tryChain(`search:${query}`, chain);
 }
 
 async function trending(lang = 'hindi', limit = 20) {
   const genre = LANG_GENRE[lang] || lang;
-  return tryChain(`trending:${lang}`, [
-    ['saavn',  () => saavn.trending(lang, limit)],
-    ['itunes', () => itunes.trending(genre, limit)],
-    ['deezer', () => deezer.trending(genre, limit)],
-  ]);
+  const chain = [
+    ['saavn', () => saavn.trending(lang, limit)],
+  ];
+
+  if (ALLOW_PREVIEW_FALLBACKS) {
+    chain.push(
+      ['itunes-preview', () => itunes.trending(genre, limit)],
+      ['deezer-preview', () => deezer.trending(genre, limit)],
+    );
+  }
+
+  return tryChain(`trending:${lang}`, chain);
 }
 
 async function song(id) {
