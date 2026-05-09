@@ -56,6 +56,7 @@ app.get('/health', (req, res) => {
     node:     process.version,
     uptime:   Math.round(process.uptime()) + 's',
     env:      process.env.NODE_ENV || 'development',
+    musicMode: 'full-song-saavn-fallback',
   });
 });
 
