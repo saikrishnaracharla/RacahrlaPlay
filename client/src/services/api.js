@@ -41,8 +41,12 @@ http.interceptors.response.use(
 );
 
 // ─── HTTP client → saavn.sumit.co DIRECT (primary) ───────────────────────────
-const SAAVN_BASE = 'https://saavn.sumit.co/api';
-const saavnHttp  = axios.create({ baseURL: SAAVN_BASE, timeout: 10000 });
+// WHY /saavn not direct URL:
+//  - Direct browser → saavn.sumit.co fails with CORS error in browser
+//  - /saavn is proxied by Vite (dev) and Vercel edge (prod) — no CORS
+//  - Vite proxy adds Referer/Origin headers so Cloudflare allows it
+const SAAVN_BASE = '/saavn';
+const saavnHttp  = axios.create({ baseURL: SAAVN_BASE, timeout: 12000 });
 
 // ─── Saavn response normalizer (mirrors server/utils/songNormalizer.js) ───────
 function pickUrl(arr, qualities) {

@@ -1,10 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search as SearchIcon, X, Clock, TrendingUp, Music2, WifiOff, RefreshCw } from 'lucide-react';
+import { Search as SearchIcon, X, Clock, TrendingUp, Music2 } from 'lucide-react';
 import SongCard from '../components/SongCard';
 import { SkeletonCard } from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import { searchSongs } from '../services/api';
 import { useDebounce } from '../hooks/useDebounce';
+
+// Hook: detect mobile screen
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', fn);
+    return () => window.removeEventListener('resize', fn);
+  }, [breakpoint]);
+  return isMobile;
+}
 
 const MAX_RECENT  = 8;
 const DEBOUNCE_MS = 700; // WHY 700ms: saavn rate-limit triggers on bursts; 700ms means user must pause before we call
@@ -15,6 +26,7 @@ const POPULAR_SEARCHES = [
 ];
 
 export default function Search() {
+  const isMobile = useIsMobile();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -298,11 +310,23 @@ export default function Search() {
 
       {/* ── Loading Skeletons ─────────────────────────────────────────── */}
       {loading && (
-        <div className="songs-grid">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
+        isMobile
+          ? <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'10px 14px', borderRadius:'10px', background:'var(--bg-card)', animation:'pulse 1.5s ease-in-out infinite', animationDelay:`${i*80}ms` }}>
+                  <div style={{ width:'44px', height:'44px', borderRadius:'6px', background:'#2a2a40', flexShrink:0 }} />
+                  <div style={{ flex:1 }}>
+                    <div style={{ height:'13px', width:'70%', background:'#2a2a40', borderRadius:'4px', marginBottom:'7px' }} />
+                    <div style={{ height:'11px', width:'45%', background:'#1e1e30', borderRadius:'4px' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          : <div className="songs-grid">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <SkeletonCard key={i} />
+              ))}
+            </div>
       )}
 
       {/* ── Error ─────────────────────────────────────────────────────── */}
@@ -332,22 +356,37 @@ export default function Search() {
       {/* ── Results ───────────────────────────────────────────────────── */}
       {!loading && !error && results.length > 0 && (
         <div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '16px' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '12px' }}>
             {results.length} results for "
             <span style={{ color: 'var(--text-secondary)' }}>{query}</span>"
           </p>
 
-          <div className="songs-grid">
-            {results.map((song, idx) => (
-              <div
-                key={`${song.id}-${idx}`}
-                className="anim-fade-up"
-                style={{ animationDelay: `${Math.min(idx, 10) * 40}ms`, animationFillMode: 'both' }}
-              >
-                <SongCard song={song} songs={results} index={idx} layout="grid" />
+          {isMobile
+            ? /* ── Mobile: List layout ── */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {results.map((song, idx) => (
+                  <div
+                    key={`${song.id}-${idx}`}
+                    className="anim-fade-up"
+                    style={{ animationDelay: `${Math.min(idx, 8) * 30}ms`, animationFillMode: 'both' }}
+                  >
+                    <SongCard song={song} songs={results} index={idx} layout="list" />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            : /* ── Desktop: Grid layout ── */
+              <div className="songs-grid">
+                {results.map((song, idx) => (
+                  <div
+                    key={`${song.id}-${idx}`}
+                    className="anim-fade-up"
+                    style={{ animationDelay: `${Math.min(idx, 10) * 40}ms`, animationFillMode: 'both' }}
+                  >
+                    <SongCard song={song} songs={results} index={idx} layout="grid" />
+                  </div>
+                ))}
+              </div>
+          }
         </div>
       )}
     </div>
