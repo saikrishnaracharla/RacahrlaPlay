@@ -3,8 +3,9 @@ const express     = require('express');
 const cors        = require('cors');
 const morgan      = require('morgan');
 const { connect, isConnected, lastError } = require('./db');
-const musicRoutes = require('./routes/music');
-const authRoutes  = require('./routes/auth');
+const musicRoutes  = require('./routes/music');
+const authRoutes   = require('./routes/auth');
+const saavnProxy   = require('./routes/saavnProxy');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const { authLimiter } = require('./middleware/rateLimiter');
 
@@ -61,8 +62,12 @@ app.get('/health', (req, res) => {
 });
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-app.use('/api',  musicRoutes);
-app.use('/auth', authLimiter, authRoutes);
+app.use('/api',   musicRoutes);
+app.use('/auth',  authLimiter, authRoutes);
+// WHY /saavn: client routes /saavn/* here so the backend (with browser-like
+// headers) forwards to saavn.sumit.co — bypassing Cloudflare that blocks
+// requests originating from Vercel edge servers.
+app.use('/saavn', saavnProxy);
 
 // ── Error handling ────────────────────────────────────────────────────────────
 app.use(notFound);

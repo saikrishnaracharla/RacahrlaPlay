@@ -86,8 +86,14 @@ function isFullSong(song) {
   return !!song?.streamUrl && song.source === 'saavn';
 }
 
-function fullSongsOnly(songs = []) {
-  return songs.filter(isFullSong);
+// Accept ALL songs from backend fallback (iTunes/Deezer previews are
+// still playable — better than a blank screen)
+function anyPlayableSong(song) {
+  return !!song?.streamUrl;
+}
+
+function playableSongsOnly(songs = []) {
+  return songs.filter(anyPlayableSong);
 }
 
 // ─── Saavn direct: search ─────────────────────────────────────────────────────
@@ -130,14 +136,14 @@ export async function searchSongs(query, page = 1, limit = 20) {
     console.warn('⚠️ Saavn direct failed, using backend fallback:', err.message);
   }
 
-  // Fallback: Express backend → iTunes (30s previews)
+  // Fallback: Express backend → Saavn (via backend proxy) + iTunes/Deezer previews
   try {
     const data = await http.get('/api/search', { params: { query: query.trim(), page, limit } });
     const out  = {
       success: data?.success ?? true,
       total:   data?.total   || (data?.results?.length ?? 0),
       page,
-      results: fullSongsOnly(data?.results || []),
+      results: playableSongsOnly(data?.results || []),
     };
     if (out.results.length > 0) cSet(key, out);
     return out;
@@ -164,7 +170,7 @@ export async function getTrending(lang = 'hindi', limit = 20) {
   // Fallback
   try {
     const data = await http.get('/api/trending', { params: { lang, limit } });
-    const out  = { success: true, language: lang, results: fullSongsOnly(data?.results || []) };
+    const out  = { success: true, language: lang, results: playableSongsOnly(data?.results || []) };
     if (out.results.length > 0) cSet(key, out);
     return out;
   } catch (err) {
@@ -215,7 +221,7 @@ export async function getSuggestions(id) {
   } catch {}
   try {
     const data = await http.get('/api/suggestions', { params: { id } });
-    const out  = { success: true, results: fullSongsOnly(data?.results || []) };
+    const out  = { success: true, results: playableSongsOnly(data?.results || []) };
     if (out.results.length > 0) cSet(key, out);
     return out;
   } catch (err) {

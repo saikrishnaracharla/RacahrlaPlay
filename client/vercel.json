@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/saavn/(.*)",
-      "destination": "https://saavn.sumit.co/api/$1"
+      "destination": "https://racahrla-play.vercel.app/saavn/$1"
     },
     {
       "source": "/api/(.*)",

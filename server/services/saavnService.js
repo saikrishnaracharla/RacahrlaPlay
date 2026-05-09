@@ -19,6 +19,16 @@ const BASE = process.env.SAAVN_API_BASE || 'https://saavn.sumit.co/api';
 const client = buildClient(BASE, 'https://www.jiosaavn.com/');
 client.defaults.timeout = 8000; // fail fast → triggers fallback sooner
 
+// Mirror clients — tried in order when primary is CF-blocked
+const MIRRORS = [
+  'https://saavn.dev/api',
+  'https://jiosaavn-api-privatechal.vercel.app/api',
+].map(base => {
+  const c = buildClient(base, 'https://www.jiosaavn.com/');
+  c.defaults.timeout = 10000;
+  return c;
+});
+
 const LEGACY_BASE = process.env.SAAVN_LEGACY_API_BASE || 'https://jiosaavn-api.vercel.app';
 const legacyClient = buildClient(LEGACY_BASE, 'https://www.jiosaavn.com/');
 legacyClient.defaults.timeout = 12000;
@@ -37,6 +47,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function saavnGet(url, params = {}, retries = 1) {
   return enqueue(async () => {
+    // Try primary first
     for (let i = 0; i <= retries; i++) {
       try {
         const r = await client.get(url, { params });
@@ -44,23 +55,34 @@ async function saavnGet(url, params = {}, retries = 1) {
         return r.data;
       } catch (err) {
         const status = err.response?.status;
-        if (status === 429 || status === 403 || err.code === 'ERR_CF_1027') {
-          // CF block — no point retrying, skip to fallback immediately
-          console.warn(`⚠️  Saavn CF blocked (${status}) — skipping to fallback`);
-          throw err;
+        if (status === 429 || status === 403 || status === 503 ||
+            err.code === 'ERR_CF_1027' || err.code === 'ECONNABORTED' ||
+            (err.message || '').includes('timeout')) {
+          console.warn(`⚠️  Saavn primary CF/timeout (${status || err.code}) — trying mirrors`);
+          break; // skip straight to mirrors
         } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
-          throw err;
-        } else if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-          console.warn(`⚠️  Saavn timeout — skipping to fallback`);
-          throw err;
+          break; // network down — try mirrors
         } else if (i < retries) {
           await sleep(2000);
         } else {
-          throw err;
+          break;
         }
       }
     }
-    return null;
+
+    // Try each mirror
+    for (let m = 0; m < MIRRORS.length; m++) {
+      try {
+        const r = await MIRRORS[m].get(url, { params });
+        await sleep(DELAY_BETWEEN);
+        console.log(`✅ Saavn mirror[${m}] succeeded for ${url}`);
+        return r.data;
+      } catch (err) {
+        console.warn(`⚠️  Saavn mirror[${m}] failed (${err.response?.status || err.message})`);
+      }
+    }
+
+    throw new Error('All Saavn mirrors exhausted');
   });
 }
 

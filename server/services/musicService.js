@@ -14,7 +14,9 @@ const itunes = require('./itunesService');
 const deezer = require('./deezerService');
 const cache  = require('../cache/nodeCache');
 
-const ALLOW_PREVIEW_FALLBACKS = process.env.ALLOW_PREVIEW_FALLBACKS === 'true';
+// Always allow preview fallbacks — 30-second previews are better than a blank
+// screen. Set DISABLE_PREVIEW_FALLBACKS=true in .env to opt out during testing.
+const ALLOW_PREVIEW_FALLBACKS = process.env.DISABLE_PREVIEW_FALLBACKS !== 'true';
 
 function hasSongs(r) {
   if (!r) return false;
