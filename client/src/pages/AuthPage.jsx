@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Eye, EyeOff, User, Mail, Lock, LogIn, UserPlus, ArrowLeft,
-  LogOut, Settings, Headphones, Heart, ListMusic, ChevronRight, Shield, Play
+  LogOut, Headphones, Heart, ListMusic, ChevronRight, Play
 } from 'lucide-react';
 
 /* ── Reusable Input ─────────────────────────────────────────────────────── */
@@ -26,11 +26,9 @@ function Input({ icon: Icon, type = 'text', placeholder, value, onChange, right 
 function ProfileView({ user, logout, navigate }) {
   const initial     = (user.username || user.email || 'U').slice(0, 2).toUpperCase();
   const menuItems   = [
-    { icon: <Headphones size={17}/>, label: 'Listening History', sub: 'See what you\'ve played',    onClick: () => navigate('/') },
-    { icon: <Heart size={17}/>,      label: 'Liked Songs',       sub: 'Your favourites',              onClick: () => navigate('/') },
-    { icon: <ListMusic size={17}/>,  label: 'My Playlists',      sub: 'Manage your playlists',        onClick: () => navigate('/playlists') },
-    { icon: <Settings size={17}/>,   label: 'Settings',          sub: 'App preferences' },
-    { icon: <Shield size={17}/>,     label: 'Privacy',           sub: 'Manage your data' },
+    { icon: <Headphones size={17}/>, label: 'Listening History', sub: 'See what you\'ve played',  onClick: () => navigate('/history') },
+    { icon: <Heart size={17}/>,      label: 'Liked Songs',       sub: 'Your favourites',            onClick: () => navigate('/liked') },
+    { icon: <ListMusic size={17}/>,  label: 'My Playlists',      sub: 'Manage your playlists',      onClick: () => navigate('/playlists') },
   ];
 
   return (

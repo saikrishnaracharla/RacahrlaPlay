@@ -11,6 +11,8 @@ import Search from './pages/Search';
 import PlaylistPage from './pages/PlaylistPage';
 import AuthPage from './pages/AuthPage';
 import MyPlaylistsPage from './pages/MyPlaylistsPage';
+import LikedSongsPage  from './pages/LikedSongsPage';
+import HistoryPage     from './pages/HistoryPage';
 import { Home as HomeIcon, Search as SearchIcon, Menu, ChevronLeft, ChevronRight, User, LogOut } from 'lucide-react';
 
 /* ── User Avatar Button (bottom nav) ── */
@@ -115,6 +117,8 @@ function AppLayout() {
               <Route path="/search" element={<Search />} />
               <Route path="/playlist/:id" element={<PlaylistPage />} />
               <Route path="/playlists" element={<MyPlaylistsPage />} />
+              <Route path="/liked" element={<LikedSongsPage />} />
+              <Route path="/history" element={<HistoryPage />} />
               <Route path="/account" element={<AuthPage />} />
             </Routes>
           </div>

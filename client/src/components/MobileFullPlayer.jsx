@@ -79,13 +79,14 @@ export default function MobileFullPlayer({ onClose }) {
   const [lyrics,    setLyrics]    = useState(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsError,   setLyricsError]   = useState(false);
+  const [lyricsLines,   setLyricsLines]   = useState([]);
 
-  const barRef = useRef(null);
+  const barRef     = useRef(null);
+  const currentLineRef = useRef(null);
 
   useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
   useEffect(() => { setImgError(false); setLiked(false); }, [currentSong]);
 
-  // Fetch lyrics when tab = lyrics or song changes
   useEffect(() => {
     if (!currentSong || tab !== 'lyrics') return;
     if (lyrics !== null && lyricsCache.has(`${currentSong.artist}::${currentSong.title}`)) return;
@@ -93,13 +94,31 @@ export default function MobileFullPlayer({ onClose }) {
     setLyricsError(false);
     fetchLyrics(currentSong.artist || '', currentSong.title || '').then(l => {
       setLyrics(l);
+      if (l) {
+        // Parse into non-empty lines (keep blank lines as section breaks)
+        const lines = l.split('\n').map(ln => ln.trim());
+        setLyricsLines(lines);
+      }
       setLyricsError(!l);
       setLyricsLoading(false);
     });
   }, [tab, currentSong]);
 
   // Reset lyrics state when song changes
-  useEffect(() => { setLyrics(null); setLyricsError(false); }, [currentSong]);
+  useEffect(() => { setLyrics(null); setLyricsError(false); setLyricsLines([]); }, [currentSong]);
+
+  // Compute current line index from playback position
+  const nonEmptyLines = lyricsLines.filter(l => l.length > 0);
+  const currentLineIdx = (duration > 0 && nonEmptyLines.length > 0)
+    ? Math.min(Math.floor((currentTime / duration) * nonEmptyLines.length), nonEmptyLines.length - 1)
+    : -1;
+
+  // Auto-scroll current line into view
+  useEffect(() => {
+    if (tab === 'lyrics' && currentLineRef.current) {
+      currentLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [currentLineIdx, tab]);
 
   const pct        = duration > 0 ? (currentTime / duration) * 100 : 0;
   const displayPct = drag ? dragVal : pct;
@@ -218,8 +237,8 @@ export default function MobileFullPlayer({ onClose }) {
               {imgSrc
                 ? <img src={imgSrc} alt={currentSong.title} onError={() => setImgError(true)}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#1a1a2e,#16213e)' }}>
-                    <Music size={80} color="#1DB954" />
+                : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#0C0018,#1A0030)' }}>
+                    <Music size={80} color="rgba(139,92,246,0.5)" />
                   </div>
               }
             </div>
@@ -247,8 +266,8 @@ export default function MobileFullPlayer({ onClose }) {
                 onTouchStart={e => { setDrag(true); setDragVal(getBarPct(e)); }}
                 style={{ height: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '99px', position: 'relative', cursor: 'pointer', marginBottom: '8px' }}
               >
-                <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${displayPct}%`, background: 'linear-gradient(to right, var(--green), #1ed760)', borderRadius: '99px', transition: drag ? 'none' : 'width 0.5s linear' }} />
-                <div style={{ position: 'absolute', left: `calc(${displayPct}% - 8px)`, top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', background: '#fff', borderRadius: '50%', boxShadow: '0 0 10px rgba(29,185,84,0.6)', transition: drag ? 'none' : 'left 0.5s linear' }} />
+                <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${displayPct}%`, background: 'linear-gradient(to right, #8B5CF6, #06B6D4)', borderRadius: '99px', transition: drag ? 'none' : 'width 0.5s linear' }} />
+                <div style={{ position: 'absolute', left: `calc(${displayPct}% - 8px)`, top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', background: '#A78BFA', borderRadius: '50%', boxShadow: '0 0 10px rgba(139,92,246,0.7)', transition: drag ? 'none' : 'left 0.5s linear' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: '600' }}>{fmt(currentTime)}</span>
@@ -259,12 +278,12 @@ export default function MobileFullPlayer({ onClose }) {
             {/* Controls */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
               <button onClick={toggleShuffle} style={{ ...iconBtnStyle, opacity: isShuffle ? 1 : 0.4 }}>
-                <Shuffle size={22} color={isShuffle ? '#1DB954' : '#fff'} />
+                <Shuffle size={22} color={isShuffle ? '#8B5CF6' : '#fff'} />
               </button>
               <button onClick={playPrev} style={iconBtnStyle} onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'} onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
                 <SkipBack size={32} color="#fff" fill="#fff" />
               </button>
-              <button onClick={togglePlay} style={{ width: '68px', height: '68px', borderRadius: '50%', background: 'linear-gradient(135deg,#1DB954,#17a349)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 28px rgba(29,185,84,0.5)', transition: 'transform 0.15s', flexShrink: 0 }}
+              <button onClick={togglePlay} style={{ width: '68px', height: '68px', borderRadius: '50%', background: 'linear-gradient(135deg,#8B5CF6,#6D28D9)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 28px rgba(139,92,246,0.55)', transition: 'transform 0.15s', flexShrink: 0 }}
                 onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.07)'}
                 onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
                 {isLoading
@@ -278,7 +297,7 @@ export default function MobileFullPlayer({ onClose }) {
                 <SkipForward size={32} color="#fff" fill="#fff" />
               </button>
               <button onClick={toggleRepeat} style={{ ...iconBtnStyle, opacity: isRepeat ? 1 : 0.4 }}>
-                <Repeat size={22} color={isRepeat ? '#1DB954' : '#fff'} />
+                <Repeat size={22} color={isRepeat ? '#8B5CF6' : '#fff'} />
               </button>
             </div>
 
@@ -319,8 +338,8 @@ export default function MobileFullPlayer({ onClose }) {
 
             {lyricsLoading && (
               <div style={{ textAlign: 'center', paddingTop: '60px' }}>
-                <div style={{ width: '32px', height: '32px', border: '3px solid rgba(255,255,255,0.1)', borderTop: '3px solid var(--green)', borderRadius: '50%', animation: 'spin 0.9s linear infinite', margin: '0 auto 16px' }} />
-                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Fetching lyrics…</p>
+                <div style={{ width: '32px', height: '32px', border: '3px solid rgba(139,92,246,0.15)', borderTop: '3px solid #8B5CF6', borderRadius: '50%', animation: 'spin 0.9s linear infinite', margin: '0 auto 16px' }} />
+                <p style={{ color: 'rgba(167,139,250,0.4)', fontSize: '14px' }}>Fetching lyrics…</p>
               </div>
             )}
 
@@ -334,12 +353,45 @@ export default function MobileFullPlayer({ onClose }) {
               </div>
             )}
 
-            {!lyricsLoading && lyrics && (
-              <div>
-                <pre style={{ color: 'rgba(255,255,255,0.85)', fontSize: '16px', lineHeight: '1.85', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: "'Inter', sans-serif", margin: 0 }}>
-                  {lyrics}
-                </pre>
-                <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: '11px', marginTop: '32px', textAlign: 'center' }}>Lyrics provided by lyrics.ovh</p>
+            {!lyricsLoading && lyrics && lyricsLines.length > 0 && (
+              <div style={{ paddingBottom: '20px' }}>
+                {/* Track each non-empty line with highlighting */}
+                {(() => {
+                  let nonEmptyCount = 0;
+                  return lyricsLines.map((line, rawIdx) => {
+                    if (line === '') {
+                      return <div key={rawIdx} style={{ height: '18px' }} />;
+                    }
+                    const linePos = nonEmptyCount++;
+                    const isCurrent  = linePos === currentLineIdx;
+                    const isPrevious = linePos === currentLineIdx - 1;
+                    const isFuture   = linePos > currentLineIdx;
+
+                    return (
+                      <p
+                        key={rawIdx}
+                        ref={isCurrent ? currentLineRef : null}
+                        style={{
+                          fontSize:      isCurrent ? '19px' : isPrevious ? '16px' : '15px',
+                          fontWeight:    isCurrent ? '800'  : isPrevious ? '600'  : '400',
+                          color:         isCurrent ? '#F0EAFF'
+                                       : isPrevious ? 'rgba(167,139,250,0.75)'
+                                       : isFuture   ? 'rgba(167,139,250,0.28)'
+                                       : 'rgba(167,139,250,0.45)',
+                          lineHeight:    '1.7',
+                          marginBottom:  isCurrent ? '6px' : '2px',
+                          transition:    'all 0.4s ease',
+                          textShadow:    isCurrent ? '0 0 20px rgba(139,92,246,0.6)' : 'none',
+                          cursor:        'default',
+                          userSelect:    'none',
+                        }}
+                      >
+                        {line}
+                      </p>
+                    );
+                  });
+                })()}
+                <p style={{ color: 'rgba(167,139,250,0.2)', fontSize: '11px', marginTop: '32px', textAlign: 'center' }}>Lyrics by lyrics.ovh</p>
               </div>
             )}
           </div>
@@ -361,7 +413,7 @@ export default function MobileFullPlayer({ onClose }) {
                   style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: '15px', padding: '15px 20px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '14px', transition: 'background 0.15s' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'linear-gradient(135deg,#1DB954,#0f9d58)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'linear-gradient(135deg,#8B5CF6,#6D28D9)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <ListMusic size={18} color="#000" />
                   </div>
                   <div>

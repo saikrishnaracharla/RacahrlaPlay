@@ -74,7 +74,7 @@ export function SidebarContent({ onClose }) {
           {isLoggedIn && (
             <button onClick={() => setShowInput(v => !v)}
               style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(255,255,255,0.4)', display:'flex', padding:'3px', borderRadius:'4px', transition:'color 0.2s' }}
-              onMouseEnter={e => e.currentTarget.style.color = '#1DB954'}
+              onMouseEnter={e => e.currentTarget.style.color = '#8B5CF6'}
               onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
             >
               <Plus size={15} />
@@ -91,9 +91,9 @@ export function SidebarContent({ onClose }) {
             </p>
             <button
               onClick={() => go('/account')}
-              style={{ background:'rgba(29,185,84,0.15)', border:'1px solid rgba(29,185,84,0.3)', borderRadius:'8px', padding:'7px 16px', color:'#1DB954', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', transition:'all 0.2s' }}
-              onMouseEnter={e => { e.currentTarget.style.background='rgba(29,185,84,0.25)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background='rgba(29,185,84,0.15)'; }}
+              style={{ background:'rgba(139,92,246,0.15)', border:'1px solid rgba(139,92,246,0.3)', borderRadius:'8px', padding:'7px 16px', color:'#A78BFA', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', transition:'all 0.2s' }}
+              onMouseEnter={e => { e.currentTarget.style.background='rgba(139,92,246,0.25)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background='rgba(139,92,246,0.15)'; }}
             >
               Sign In to PLAYIT
             </button>
@@ -107,11 +107,11 @@ export function SidebarContent({ onClose }) {
                   onKeyDown={e => { if(e.key==='Enter') handleCreate(); if(e.key==='Escape'){setShowInput(false);setName('');} }}
                   placeholder="Playlist name..."
                   style={{ width:'100%', background:'rgba(255,255,255,0.07)', border:'1.5px solid rgba(255,255,255,0.12)', borderRadius:'8px', padding:'8px 12px', color:'#fff', fontSize:'13px', fontFamily:'inherit', outline:'none', marginBottom:'6px', boxSizing:'border-box' }}
-                  onFocus={e => e.target.style.borderColor='#1DB954'}
+                  onFocus={e => e.target.style.borderColor='#8B5CF6'}
                   onBlur={e  => e.target.style.borderColor='rgba(255,255,255,0.12)'}
                 />
                 <button onClick={handleCreate} disabled={!name.trim()}
-                  style={{ width:'100%', background: name.trim() ? '#1DB954':'rgba(29,185,84,0.25)', border:'none', borderRadius:'8px', padding:'8px', color:'#000', fontSize:'12px', fontWeight:'700', cursor: name.trim()?'pointer':'not-allowed', fontFamily:'inherit', transition:'background 0.2s' }}>
+                  style={{ width:'100%', background: name.trim() ? 'linear-gradient(135deg,#8B5CF6,#6D28D9)':'rgba(139,92,246,0.2)', border:'none', borderRadius:'8px', padding:'8px', color:'#fff', fontSize:'12px', fontWeight:'700', cursor: name.trim()?'pointer':'not-allowed', fontFamily:'inherit', transition:'background 0.2s' }}>
                   Create
                 </button>
               </div>
@@ -130,10 +130,10 @@ export function SidebarContent({ onClose }) {
                 onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,0.07)'; const d=e.currentTarget.querySelector('.delbtn'); if(d) d.style.opacity='1'; }}
                 onMouseLeave={e => { e.currentTarget.style.background='transparent'; const d=e.currentTarget.querySelector('.delbtn'); if(d) d.style.opacity='0'; }}
               >
-                <div style={{ width:'36px', height:'36px', borderRadius:'7px', background:'rgba(29,185,84,0.12)', border:'1px solid rgba(29,185,84,0.18)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
+                <div style={{ width:'36px', height:'36px', borderRadius:'7px', background:'rgba(139,92,246,0.12)', border:'1px solid rgba(139,92,246,0.2)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
                   {pl.songs[0]?.image
                     ? <img src={pl.songs[0].image} alt={pl.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>e.target.style.display='none'} />
-                    : <ListMusic size={14} color="#1DB954" />
+                    : <ListMusic size={14} color="#8B5CF6" />
                   }
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
