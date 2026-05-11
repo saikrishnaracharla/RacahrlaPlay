@@ -10,6 +10,10 @@
       "destination": "https://racahrla-play.vercel.app/stream"
     },
     {
+      "source": "/stream-proxy",
+      "destination": "https://racahrla-play.vercel.app/stream-proxy"
+    },
+    {
       "source": "/youtube/(.*)",
       "destination": "https://racahrla-play.vercel.app/youtube/$1"
     },

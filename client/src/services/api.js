@@ -34,6 +34,9 @@ function cSet(k, v) {
 }
 
 // ─── HTTP clients ─────────────────────────────────────────────────────────────
+// Backend base URL — used directly for stream endpoints (bypasses Vercel rewrite)
+const BACKEND = 'https://racahrla-play.vercel.app';
+
 const http = axios.create({ baseURL: '', timeout: 25000 });
 http.interceptors.response.use(
   r => r.data,
@@ -103,10 +106,18 @@ export async function getYouTubeStreamUrl(title, artist) {
   if (hit) return hit;
 
   try {
-    const data = await http.get('/stream', { params: { q } });
+    // Call backend DIRECTLY — bypass Vercel rewrite (which has query-string edge cases)
+    // Backend CORS allows *.vercel.app so this works cross-domain
+    const r = await axios.get(`${BACKEND}/stream`, { params: { q }, timeout: 20000 });
+    const data = r.data;
     if (data?.streamUrl) {
-      // Cache for 4 hours (YouTube URLs expire after ~6h)
-      const result = { streamUrl: data.streamUrl, duration: data.duration };
+      // Backend returns relative "/stream-proxy?id=..." — make it absolute
+      // so the <audio> element can reach it from racharlaplay.vercel.app
+      const streamUrl = data.streamUrl.startsWith('/')
+        ? `${BACKEND}${data.streamUrl}`
+        : data.streamUrl;
+      const result = { streamUrl, duration: data.duration };
+      // Cache 4 hours (YouTube URLs expire after ~6h)
       cSet(key, result);
       return result;
     }
