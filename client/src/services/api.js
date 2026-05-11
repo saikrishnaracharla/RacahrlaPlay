@@ -42,11 +42,11 @@ http.interceptors.response.use(
   ))
 );
 
-// Direct calls to public Saavn API instances for song discovery ONLY
-const SAAVN_INSTANCES = [
-  'https://saavn.sumit.co/api',
-  'https://jiosaavn-api-privatechal.vercel.app/api',
-].map(baseURL => axios.create({ baseURL, timeout: 12000 }));
+// All Saavn calls go through OUR BACKEND PROXY at /saavn/*
+// Vercel rewrites /saavn/* → racahrla-play.vercel.app/saavn/*
+// The backend proxy adds browser-like headers and handles Cloudflare — no CORS!
+const saavnProxy = axios.create({ baseURL: '', timeout: 14000 });
+saavnProxy.interceptors.response.use(r => r.data, err => Promise.reject(err));
 
 // ─── Normalizers ──────────────────────────────────────────────────────────────
 function pickUrl(arr, qualities) {
@@ -79,7 +79,7 @@ function normalizeSaavn(s) {
     album: cleanText(s.album?.name || s.album || ''),
     duration: Number(s.duration) || 0,
     image: pickUrl(s.image, ['500x500', '150x150']) ||
-      'https://placehold.co/300x300/0e0e14/1DB954?text=%F0%9F%8E%B5',
+      'https://placehold.co/300x300/0C0018/8B5CF6?text=🎵',
     streamUrl: saavnUrl || `__pending__`, // replaced by YouTube URL on play
     year: s.year || '',
     language: s.language || '',
@@ -116,22 +116,26 @@ export async function getYouTubeStreamUrl(title, artist) {
   return null;
 }
 
-// ─── Saavn discovery (metadata + artwork only) ────────────────────────────────
-async function trySaavnInstances(path, params) {
-  for (let i = 0; i < SAAVN_INSTANCES.length; i++) {
-    try {
-      const r = await SAAVN_INSTANCES[i].get(path, { params });
-      const songs = (r.data?.data?.results || []).map(normalizeSaavn).filter(s => s && s.title);
-      if (songs.length > 0) {
-        console.log(`✅ saavn-instance[${i}] served ${songs.length} songs`);
-        return { songs, total: r.data?.data?.total || songs.length };
-      }
-    } catch (err) {
-      console.warn(`⚠️ saavn-instance[${i}] failed: ${err.message}`);
-    }
+// ─── Saavn discovery via backend proxy ────────────────────────────────────────
+// Calls go to /saavn/* → Vercel rewrite → racahrla-play.vercel.app/saavn/*
+// Backend proxy adds User-Agent/Referer headers to bypass Cloudflare.
+async function saavnGet(path, params) {
+  try {
+    const r = await saavnProxy.get(`/saavn${path}`, { params });
+    const results = r.data?.results || r.data?.data?.results || r.results || r || [];
+    const songs = (Array.isArray(results) ? results : [])
+      .map(normalizeSaavn)
+      .filter(s => s && s.title);
+    if (songs.length > 0) return { songs, total: r.data?.data?.total || songs.length };
+  } catch (err) {
+    console.warn('⚠️ saavn proxy failed:', err.message);
   }
-  // Backend fallback
   return null;
+}
+
+// Legacy shim so existing callers still work
+async function trySaavnInstances(path, params) {
+  return saavnGet(path, params);
 }
 
 const TRENDING_QUERIES = {
@@ -202,15 +206,13 @@ export async function getSongDetails(id) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  for (const instance of SAAVN_INSTANCES) {
-    try {
-      const r = await instance.get(`/songs/${id}`);
-      const raw = r.data?.data;
-      const s = Array.isArray(raw) ? raw[0] : raw;
-      const song = normalizeSaavn(s);
-      if (song) { const out = { success: true, song }; cSet(key, out); return out; }
-    } catch { }
-  }
+  try {
+    const r = await saavnProxy.get(`/saavn/songs/${id}`);
+    const raw = r.data?.data || r.data;
+    const s = Array.isArray(raw) ? raw[0] : raw;
+    const song = normalizeSaavn(s);
+    if (song) { const out = { success: true, song }; cSet(key, out); return out; }
+  } catch { }
   return { success: false, song: null };
 }
 
@@ -220,25 +222,21 @@ export async function getSuggestions(id) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  for (const instance of SAAVN_INSTANCES) {
-    try {
-      const r = await instance.get(`/songs/${id}/suggestions`);
-      const songs = (r.data?.data || []).map(normalizeSaavn).filter(s => s?.title);
-      if (songs.length) { const out = { success: true, results: songs }; cSet(key, out); return out; }
-    } catch { }
-  }
+  try {
+    const r = await saavnProxy.get(`/saavn/songs/${id}/suggestions`);
+    const songs = (r.data?.data || []).map(normalizeSaavn).filter(s => s?.title);
+    if (songs.length) { const out = { success: true, results: songs }; cSet(key, out); return out; }
+  } catch { }
   return { success: false, results: [] };
 }
 
 // ─── Albums ───────────────────────────────────────────────────────────────────
 export async function searchAlbums(query, limit = 10) {
-  for (const instance of SAAVN_INSTANCES) {
-    try {
-      const r = await instance.get('/search/albums', { params: { query, limit } });
-      const results = r.data?.data?.results || [];
-      if (results.length) return { success: true, results };
-    } catch { }
-  }
+  try {
+    const r = await saavnProxy.get('/saavn/search/albums', { params: { query, limit } });
+    const results = r.data?.data?.results || r.data?.results || [];
+    if (results.length) return { success: true, results };
+  } catch { }
   return { success: false, results: [] };
 }
 

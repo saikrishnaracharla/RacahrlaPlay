@@ -2,6 +2,14 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/saavn/(.*)",
+      "destination": "https://racahrla-play.vercel.app/saavn/$1"
+    },
+    {
+      "source": "/stream",
+      "destination": "https://racahrla-play.vercel.app/stream"
+    },
+    {
       "source": "/youtube/(.*)",
       "destination": "https://racahrla-play.vercel.app/youtube/$1"
     },
