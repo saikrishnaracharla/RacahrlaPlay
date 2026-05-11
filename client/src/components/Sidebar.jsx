@@ -50,13 +50,13 @@ export function SidebarContent({ onClose }) {
             onClick={() => onClose?.()}
             style={({ isActive }) => ({
               display:'flex', alignItems:'center', gap:'12px', padding:'10px 14px', borderRadius:'9px',
-              color: isActive ? '#fff' : 'rgba(255,255,255,0.5)', textDecoration:'none',
+              color: isActive ? '#F0EAFF' : 'rgba(255,255,255,0.5)', textDecoration:'none',
               fontSize:'14px', fontWeight:'600',
-              background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
+              background: isActive ? 'rgba(139,92,246,0.12)' : 'transparent',
               transition:'all 0.2s', marginBottom:'2px',
             })}
           >
-            {({ isActive }) => <><Icon size={17} color={isActive ? '#1DB954' : undefined} />{label}</>}
+            {({ isActive }) => <><Icon size={17} color={isActive ? '#8B5CF6' : undefined} />{label}</>}
           </NavLink>
         ))}
       </nav>
@@ -166,11 +166,11 @@ export default function Sidebar({ collapsed }) {
           <div style={{ width:'36px', height:'36px', background:'linear-gradient(135deg,#8B5CF6,#06B6D4)', borderRadius:'11px', display:'flex', alignItems:'center', justifyContent:'center' }}>
             <Music size={18} color="#000" />
           </div>
-          <NavLink to="/" end style={({ isActive }) => ({ color: isActive ? '#1DB954' : 'rgba(255,255,255,0.4)', display:'flex' })}>
-            {({ isActive }) => <Home size={20} color={isActive ? '#1DB954' : undefined} />}
+          <NavLink to="/" end style={({ isActive }) => ({ color: isActive ? '#8B5CF6' : 'rgba(255,255,255,0.4)', display:'flex' })}>
+            {({ isActive }) => <Home size={20} color={isActive ? '#8B5CF6' : undefined} />}
           </NavLink>
-          <NavLink to="/search" style={({ isActive }) => ({ color: isActive ? '#1DB954' : 'rgba(255,255,255,0.4)', display:'flex' })}>
-            {({ isActive }) => <Search size={20} color={isActive ? '#1DB954' : undefined} />}
+          <NavLink to="/search" style={({ isActive }) => ({ color: isActive ? '#8B5CF6' : 'rgba(255,255,255,0.4)', display:'flex' })}>
+            {({ isActive }) => <Search size={20} color={isActive ? '#8B5CF6' : undefined} />}
           </NavLink>
         </div>
       )}

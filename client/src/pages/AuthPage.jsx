@@ -26,9 +26,9 @@ function Input({ icon: Icon, type = 'text', placeholder, value, onChange, right 
 function ProfileView({ user, logout, navigate }) {
   const initial     = (user.username || user.email || 'U').slice(0, 2).toUpperCase();
   const menuItems   = [
-    { icon: <Headphones size={17}/>, label: 'Listening History', sub: 'See what you\'ve played' },
-    { icon: <Heart size={17}/>,      label: 'Liked Songs',       sub: 'Your favourites',         onClick: () => navigate('/') },
-    { icon: <ListMusic size={17}/>,  label: 'My Playlists',      sub: 'Manage your playlists',   onClick: () => navigate('/') },
+    { icon: <Headphones size={17}/>, label: 'Listening History', sub: 'See what you\'ve played',    onClick: () => navigate('/') },
+    { icon: <Heart size={17}/>,      label: 'Liked Songs',       sub: 'Your favourites',              onClick: () => navigate('/') },
+    { icon: <ListMusic size={17}/>,  label: 'My Playlists',      sub: 'Manage your playlists',        onClick: () => navigate('/playlists') },
     { icon: <Settings size={17}/>,   label: 'Settings',          sub: 'App preferences' },
     { icon: <Shield size={17}/>,     label: 'Privacy',           sub: 'Manage your data' },
   ];

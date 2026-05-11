@@ -10,6 +10,7 @@ import Home from './pages/Home';
 import Search from './pages/Search';
 import PlaylistPage from './pages/PlaylistPage';
 import AuthPage from './pages/AuthPage';
+import MyPlaylistsPage from './pages/MyPlaylistsPage';
 import { Home as HomeIcon, Search as SearchIcon, Menu, ChevronLeft, ChevronRight, User, LogOut } from 'lucide-react';
 
 /* ── User Avatar Button (bottom nav) ── */
@@ -103,9 +104,7 @@ function AppLayout() {
               <Menu size={22} />
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-              <div style={{ width:'28px', height:'28px', background:'linear-gradient(135deg,#8B5CF6,#06B6D4)', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <span style={{ fontSize:'14px' }}>▶</span>
-              </div>
+              <img src="/music-icon.svg" alt="PLAYIT" style={{ width:'28px', height:'28px', borderRadius:'8px', flexShrink:0, objectFit:'cover' }} />
               <span className="playit-logo" style={{ fontSize:'20px' }}>PLAYIT</span>
             </div>
           </div>
@@ -115,6 +114,7 @@ function AppLayout() {
               <Route path="/" element={<Home />} />
               <Route path="/search" element={<Search />} />
               <Route path="/playlist/:id" element={<PlaylistPage />} />
+              <Route path="/playlists" element={<MyPlaylistsPage />} />
               <Route path="/account" element={<AuthPage />} />
             </Routes>
           </div>
