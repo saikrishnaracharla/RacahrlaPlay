@@ -62,7 +62,7 @@ export default function MobileFullPlayer({ onClose }) {
     currentSong, isPlaying, isLoading, duration, currentTime, isRepeat, isShuffle,
     togglePlay, playNext, playPrev, seek, toggleRepeat, toggleShuffle,
   } = usePlayer();
-  const { playlists, addSongToPlaylist } = usePlaylists();
+  const { playlists, addToPlaylist } = usePlaylists();
 
   const [imgError,  setImgError]  = useState(false);
   const [liked,     setLiked]     = useState(false);
@@ -353,7 +353,7 @@ export default function MobileFullPlayer({ onClose }) {
             {playlists.length === 0
               ? <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', padding: '24px', textAlign: 'center' }}>No playlists yet. Create one from the sidebar.</p>
               : playlists.map(pl => (
-                <button key={pl.id} onClick={() => { addSongToPlaylist(pl.id, currentSong); setShowAddPl(false); }}
+                <button key={pl.id} onClick={() => { addToPlaylist(pl.id, currentSong); setShowAddPl(false); }}
                   style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: '15px', padding: '15px 20px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '14px', transition: 'background 0.15s' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'none'}>

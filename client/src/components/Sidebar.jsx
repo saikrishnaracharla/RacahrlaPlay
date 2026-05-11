@@ -90,7 +90,7 @@ export function SidebarContent({ onClose }) {
               Sign in to see your<br/>playlists &amp; library
             </p>
             <button
-              onClick={() => go('/auth')}
+              onClick={() => go('/account')}
               style={{ background:'rgba(29,185,84,0.15)', border:'1px solid rgba(29,185,84,0.3)', borderRadius:'8px', padding:'7px 16px', color:'#1DB954', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit', transition:'all 0.2s' }}
               onMouseEnter={e => { e.currentTarget.style.background='rgba(29,185,84,0.25)'; }}
               onMouseLeave={e => { e.currentTarget.style.background='rgba(29,185,84,0.15)'; }}
