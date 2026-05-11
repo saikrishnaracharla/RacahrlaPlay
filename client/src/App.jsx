@@ -25,7 +25,7 @@ function AccountNavBtn() {
 
   return (
     <button className="bn-item" onClick={() => navigate('/account')} style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-      <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: user.avatar_color || '#1DB954', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '13px', color: '#000', flexShrink: 0 }}>
+      <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'linear-gradient(135deg,#8B5CF6,#06B6D4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '12px', color: '#fff', flexShrink: 0, boxShadow:'0 0 0 2px rgba(139,92,246,0.4)' }}>
         {user.username?.[0]?.toUpperCase() || 'U'}
       </div>
       <span style={{ maxWidth: '52px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.username}</span>
@@ -103,10 +103,10 @@ function AppLayout() {
               <Menu size={22} />
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-              <div style={{ width: '28px', height: '28px', background: 'linear-gradient(135deg,#1DB954,#0f9d58)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span style={{ fontSize: '15px' }}>🎵</span>
+              <div style={{ width:'28px', height:'28px', background:'linear-gradient(135deg,#8B5CF6,#06B6D4)', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:'14px' }}>▶</span>
               </div>
-              <span style={{ fontFamily: "'Exo 2',Rajdhani,Outfit,sans-serif", fontWeight: '900', fontSize: '18px', color: '#fff', letterSpacing: '-0.3px' }}>Racharlaplay</span>
+              <span className="playit-logo" style={{ fontSize:'20px' }}>PLAYIT</span>
             </div>
           </div>
 

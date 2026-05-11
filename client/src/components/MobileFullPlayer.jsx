@@ -37,23 +37,27 @@ async function fetchLyrics(artist, title) {
 }
 
 /* ── Tab button ─────────────────────────────────────────────────────── */
-function Tab({ active, onClick, icon, label }) {
+function Tab({ active, onClick, icon, label, tooltip }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        flex: 1, background: 'none', border: 'none', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-        padding: '10px 0',
-        color: active ? '#fff' : 'rgba(255,255,255,0.35)',
-        fontSize: '12px', fontWeight: active ? '700' : '500',
-        fontFamily: 'inherit', letterSpacing: '0.4px',
-        borderBottom: active ? '2px solid var(--green)' : '2px solid transparent',
-        transition: 'all 0.2s',
-      }}
-    >
-      {icon} {label}
-    </button>
+    <div className="has-tooltip" style={{ flex: 1 }}>
+      <button
+        onClick={onClick}
+        title={tooltip || label}
+        style={{
+          width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+          padding: '11px 0',
+          color: active ? '#F0EAFF' : 'rgba(255,255,255,0.3)',
+          fontSize: '12px', fontWeight: active ? '700' : '500',
+          fontFamily: 'inherit', letterSpacing: '0.5px',
+          borderBottom: active ? '2px solid #8B5CF6' : '2px solid transparent',
+          transition: 'all 0.2s',
+        }}
+      >
+        {icon} {label}
+      </button>
+      <span className="tooltip">{tooltip || label}</span>
+    </div>
   );
 }
 
@@ -169,7 +173,7 @@ export default function MobileFullPlayer({ onClose }) {
               Now Playing
             </p>
             <p style={{ color: '#fff', fontSize: '13px', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {currentSong.album || 'Racharlaplay'}
+              {currentSong.album || 'PLAYIT'}
             </p>
           </div>
 
@@ -200,9 +204,9 @@ export default function MobileFullPlayer({ onClose }) {
         </div>
 
         {/* ── Tab Bar ──────────────────────────────── */}
-        <div style={{ display: 'flex', margin: '0 24px 4px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <Tab active={tab === 'player'} onClick={() => setTab('player')} icon={<Music size={13}/>} label="Player" />
-          <Tab active={tab === 'lyrics'} onClick={() => setTab('lyrics')} icon={<Mic2  size={13}/>} label="Lyrics" />
+        <div style={{ display: 'flex', margin: '0 24px 4px', borderBottom: '1px solid rgba(139,92,246,0.15)' }}>
+          <Tab active={tab === 'player'} onClick={() => setTab('player')} icon={<Music size={13}/>} label="Player"    tooltip="Back to Player" />
+          <Tab active={tab === 'lyrics'} onClick={() => setTab('lyrics')} icon={<Mic2  size={13}/>} label="Lyrics"    tooltip="View Song Lyrics" />
         </div>
 
         {/* ── PLAYER TAB ───────────────────────────── */}

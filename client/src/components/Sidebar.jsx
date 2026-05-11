@@ -24,12 +24,12 @@ export function SidebarContent({ onClose }) {
       {/* Logo + close button (mobile) */}
       <div style={{ padding:'20px 16px 14px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-          <div style={{ width:'36px', height:'36px', background:'linear-gradient(135deg,#1DB954,#0f9d58)', borderRadius:'11px', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 16px rgba(29,185,84,0.35)', flexShrink:0 }}>
-            <Music size={18} color="#000" />
+          <div style={{ width:'36px', height:'36px', background:'linear-gradient(135deg,#8B5CF6,#06B6D4)', borderRadius:'11px', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 16px rgba(139,92,246,0.4)', flexShrink:0 }}>
+            <Music size={18} color="#fff" />
           </div>
           <div>
-            <p style={{ fontFamily:"'Exo 2',Rajdhani,Outfit,sans-serif", fontWeight:'900', fontSize:'17px', color:'#fff', lineHeight:'1', letterSpacing:'-0.3px' }}>Racharlaplay</p>
-            <p style={{ color:'#1DB954', fontSize:'10px', fontWeight:'700', letterSpacing:'1.2px' }}>INDIAN MUSIC</p>
+            <p className="playit-logo" style={{ fontSize:'18px', lineHeight:'1', letterSpacing:'-1px' }}>PLAYIT</p>
+            <p style={{ color:'rgba(167,139,250,0.7)', fontSize:'10px', fontWeight:'700', letterSpacing:'1.5px' }}>INDIAN MUSIC</p>
           </div>
         </div>
         {onClose && (
@@ -95,7 +95,7 @@ export function SidebarContent({ onClose }) {
               onMouseEnter={e => { e.currentTarget.style.background='rgba(29,185,84,0.25)'; }}
               onMouseLeave={e => { e.currentTarget.style.background='rgba(29,185,84,0.15)'; }}
             >
-              Sign In
+              Sign In to PLAYIT
             </button>
           </div>
         ) : (
@@ -163,7 +163,7 @@ export default function Sidebar({ collapsed }) {
       {!collapsed && <SidebarContent />}
       {collapsed && (
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', paddingTop:'20px', gap:'20px' }}>
-          <div style={{ width:'36px', height:'36px', background:'linear-gradient(135deg,#1DB954,#0f9d58)', borderRadius:'11px', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ width:'36px', height:'36px', background:'linear-gradient(135deg,#8B5CF6,#06B6D4)', borderRadius:'11px', display:'flex', alignItems:'center', justifyContent:'center' }}>
             <Music size={18} color="#000" />
           </div>
           <NavLink to="/" end style={({ isActive }) => ({ color: isActive ? '#1DB954' : 'rgba(255,255,255,0.4)', display:'flex' })}>
