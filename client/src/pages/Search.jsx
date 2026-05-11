@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search as SearchIcon, X, Clock, TrendingUp, Music2, Fire, Mic2 } from 'lucide-react';
+import { Search as SearchIcon, X, Clock, TrendingUp, Music2, Flame, Mic2 } from 'lucide-react';
 import SongCard from '../components/SongCard';
 import { SkeletonCard } from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
