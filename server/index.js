@@ -1,15 +1,15 @@
 require('dotenv').config();
-const express     = require('express');
-const cors        = require('cors');
-const morgan      = require('morgan');
+const express = require('express');
+const cors = require('cors');
+const morgan = require('morgan');
 const { connect, isConnected, lastError } = require('./db');
-const musicRoutes  = require('./routes/music');
-const authRoutes   = require('./routes/auth');
-const saavnProxy   = require('./routes/saavnProxy');
+const musicRoutes = require('./routes/music');
+const authRoutes = require('./routes/auth');
+const saavnProxy = require('./routes/saavnProxy');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const { authLimiter } = require('./middleware/rateLimiter');
 
-const app  = express();
+const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ── Trust proxy (Vercel / Render / Railway) ───────────────────────────────────
@@ -27,9 +27,9 @@ app.use(cors({
     if (/\.vercel\.app$/.test(origin)) return cb(null, true);
     cb(new Error(`CORS blocked: ${origin}`));
   },
-  methods:      ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials:  true,
+  credentials: true,
 }));
 
 // ── Middleware ────────────────────────────────────────────────────────────────
@@ -49,21 +49,21 @@ app.use(async (req, res, next) => {
 app.get('/health', (req, res) => {
   const connected = isConnected();
   res.json({
-    status:   'ok',
-    message:  '🎵 Racharlaplay API running',
+    status: 'ok',
+    message: '🎵 Racharlaplay API running',
     database: connected ? 'MongoDB Atlas ✅' : 'Disconnected ❌',
-    dbError:  connected ? null : (lastError() || 'Unknown - check Vercel logs'),
+    dbError: connected ? null : (lastError() || 'Unknown - check Vercel logs'),
     mongoUri: process.env.MONGODB_URI ? `set (${process.env.MONGODB_URI.slice(0, 30)}...)` : 'NOT SET ❌',
-    node:     process.version,
-    uptime:   Math.round(process.uptime()) + 's',
-    env:      process.env.NODE_ENV || 'development',
+    node: process.version,
+    uptime: Math.round(process.uptime()) + 's',
+    env: process.env.NODE_ENV || 'development',
     musicMode: 'full-song-saavn-fallback',
   });
 });
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-app.use('/api',   musicRoutes);
-app.use('/auth',  authLimiter, authRoutes);
+app.use('/api', musicRoutes);
+app.use('/auth', authLimiter, authRoutes);
 // WHY /saavn: client routes /saavn/* here so the backend (with browser-like
 // headers) forwards to saavn.sumit.co — bypassing Cloudflare that blocks
 // requests originating from Vercel edge servers.
@@ -128,10 +128,10 @@ app.get('/stream-proxy', async (req, res) => {
   if (!id) return res.status(400).json({ error: 'id (videoId) is required' });
 
   try {
-    const url  = `https://www.youtube.com/watch?v=${id}`;
+    const url = `https://www.youtube.com/watch?v=${id}`;
     const opts = {
       quality: 'highestaudio',
-      filter:  'audioonly',
+      filter: 'audioonly',
       requestOptions: {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -154,6 +154,46 @@ app.get('/stream-proxy', async (req, res) => {
   } catch (err) {
     console.error(`❌ /stream-proxy failed for ${id}: ${err.message}`);
     res.status(502).json({ error: err.message });
+  }
+});
+
+// ── Error handling ────────────────────────────────────────────────────────────
+app.use(notFound);
+app.use(errorHandler);
+
+
+
+// ── Local dev server (NOT used by Vercel — Vercel uses module.exports) ────────
+if (!process.env.VERCEL) {
+  app.listen(PORT, async () => {
+    await connect();
+    console.log(`\n🎵 Racharlaplay Server  → http://localhost:${PORT}`);
+    console.log(`📡 Saavn API Base       : ${process.env.SAAVN_API_BASE}`);
+    console.log(`🌍 Node                 : ${process.version}\n`);
+  });
+}
+
+// ── Export for Vercel serverless ──────────────────────────────────────────────
+module.exports = app;
+res.setHeader('Cache-Control', 'public, max-age=21600'); // 6h
+res.json({ success: true, ...data });
+  } catch (err) {
+  console.error(`❌ /youtube/search failed for "${q}": ${err.message}`);
+  res.status(502).json({ success: false, error: err.message });
+}
+});
+
+app.get('/youtube/enrich', async (req, res) => {
+  const { title = '', artist = '' } = req.query;
+  if (!title) return res.status(400).json({ error: 'title is required' });
+  try {
+    const data = await enrichWithYouTube(title.trim(), artist.trim());
+    if (!data) return res.status(404).json({ success: false, error: 'No YouTube result found' });
+    res.setHeader('Cache-Control', 'public, max-age=43200'); // 12h
+    res.json({ success: true, ...data });
+  } catch (err) {
+    console.error(`❌ /youtube/enrich failed: ${err.message}`);
+    res.status(502).json({ success: false, error: err.message });
   }
 });
 

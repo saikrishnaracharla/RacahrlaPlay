@@ -98,7 +98,7 @@ export function PlayerProvider({ children }) {
 
     const handleCanPlay = () => {
       dispatch({ type: ACTIONS.SET_LOADING, payload: false });
-      audio.play().catch(() => {});
+      audio.play().catch(() => { });
       dispatch({ type: ACTIONS.SET_PLAYING, payload: true });
     };
 
@@ -106,7 +106,7 @@ export function PlayerProvider({ children }) {
       const { isRepeat, queue, currentIndex } = stateRef.current;
       if (isRepeat) {
         audio.currentTime = 0;
-        audio.play().catch(() => {});
+        audio.play().catch(() => { });
       } else if (currentIndex < queue.length - 1) {
         playNext();
       } else {
@@ -204,7 +204,7 @@ export function PlayerProvider({ children }) {
       audio.pause();
       dispatch({ type: ACTIONS.SET_PLAYING, payload: false });
     } else {
-      audio.play().catch(() => {});
+      audio.play().catch(() => { });
       dispatch({ type: ACTIONS.SET_PLAYING, payload: true });
     }
   }, []);
@@ -246,7 +246,7 @@ export function PlayerProvider({ children }) {
     }
 
     const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
-    const prevSong  = queue[prevIndex];
+    const prevSong = queue[prevIndex];
     if (prevSong) {
       const audio = audioRef.current;
       audio.pause();

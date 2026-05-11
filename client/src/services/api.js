@@ -17,7 +17,7 @@
 import axios from 'axios';
 
 // ─── Cache ────────────────────────────────────────────────────────────────────
-const CACHE_TTL    = 10 * 60 * 1000;
+const CACHE_TTL = 10 * 60 * 1000;
 const CACHE_PREFIX = 'rp:v6:yt';
 function cKey(k, p) { return `${CACHE_PREFIX}:${k}:${JSON.stringify(p || {})}` }
 function cGet(k) {
@@ -30,7 +30,7 @@ function cGet(k) {
   } catch { return null; }
 }
 function cSet(k, v) {
-  try { sessionStorage.setItem(k, JSON.stringify({ data: v, ts: Date.now() })); } catch {}
+  try { sessionStorage.setItem(k, JSON.stringify({ data: v, ts: Date.now() })); } catch { }
 }
 
 // ─── HTTP clients ─────────────────────────────────────────────────────────────
@@ -69,23 +69,23 @@ function normalizeSaavn(s) {
   // Use Saavn URL as initial streamUrl (may be 30s) — YouTube URL will replace it on play
   const saavnUrl = pickUrl(s.downloadUrl, ['320kbps', '160kbps', '96kbps']);
   return {
-    id:           s.id,
-    source:       'saavn',
-    title:        cleanText(s.name || s.title || ''),
-    artist:       cleanText(
+    id: s.id,
+    source: 'saavn',
+    title: cleanText(s.name || s.title || ''),
+    artist: cleanText(
       s.artists?.primary?.map(a => a.name).join(', ') ||
       s.primaryArtists || s.subtitle?.split(' - ')[0] || 'Unknown Artist'
     ),
-    album:        cleanText(s.album?.name || s.album || ''),
-    duration:     Number(s.duration) || 0,
-    image:        pickUrl(s.image, ['500x500', '150x150']) ||
-                  'https://placehold.co/300x300/0e0e14/1DB954?text=%F0%9F%8E%B5',
-    streamUrl:    saavnUrl || `__pending__`, // replaced by YouTube URL on play
-    year:         s.year || '',
-    language:     s.language || '',
-    hasLyrics:    !!s.hasLyrics,
-    playCount:    s.playCount || 0,
-    label:        s.label || '',
+    album: cleanText(s.album?.name || s.album || ''),
+    duration: Number(s.duration) || 0,
+    image: pickUrl(s.image, ['500x500', '150x150']) ||
+      'https://placehold.co/300x300/0e0e14/1DB954?text=%F0%9F%8E%B5',
+    streamUrl: saavnUrl || `__pending__`, // replaced by YouTube URL on play
+    year: s.year || '',
+    language: s.language || '',
+    hasLyrics: !!s.hasLyrics,
+    playCount: s.playCount || 0,
+    label: s.label || '',
     _needsYtStream: true, // flag to trigger YouTube stream fetch on play
   };
 }
@@ -97,7 +97,7 @@ function normalizeSaavn(s) {
  * Returns the streamUrl to replace the Saavn/placeholder URL.
  */
 export async function getYouTubeStreamUrl(title, artist) {
-  const q   = `${title} ${artist} official audio`.trim();
+  const q = `${title} ${artist} official audio`.trim();
   const key = cKey('yt', { q });
   const hit = cGet(key);
   if (hit) return hit;
@@ -120,7 +120,7 @@ export async function getYouTubeStreamUrl(title, artist) {
 async function trySaavnInstances(path, params) {
   for (let i = 0; i < SAAVN_INSTANCES.length; i++) {
     try {
-      const r     = await SAAVN_INSTANCES[i].get(path, { params });
+      const r = await SAAVN_INSTANCES[i].get(path, { params });
       const songs = (r.data?.data?.results || []).map(normalizeSaavn).filter(s => s && s.title);
       if (songs.length > 0) {
         console.log(`✅ saavn-instance[${i}] served ${songs.length} songs`);
@@ -135,12 +135,12 @@ async function trySaavnInstances(path, params) {
 }
 
 const TRENDING_QUERIES = {
-  hindi:     'bollywood hits 2024 arijit singh',
-  telugu:    'telugu hits 2024 pushpa allu arjun',
-  tamil:     'tamil hits 2024 anirudh',
+  hindi: 'bollywood hits 2024 arijit singh',
+  telugu: 'telugu hits 2024 pushpa allu arjun',
+  tamil: 'tamil hits 2024 anirudh',
   malayalam: 'malayalam hits 2024',
-  kannada:   'kannada hits 2024 yash',
-  punjabi:   'punjabi hits 2024 diljit dosanjh',
+  kannada: 'kannada hits 2024 yash',
+  punjabi: 'punjabi hits 2024 diljit dosanjh',
 };
 
 // ─── Music API: search ────────────────────────────────────────────────────────
@@ -160,9 +160,9 @@ export async function searchSongs(query, page = 1, limit = 20) {
 
   // Backend fallback
   try {
-    const data    = await http.get('/api/search', { params: { query: query.trim(), page, limit } });
+    const data = await http.get('/api/search', { params: { query: query.trim(), page, limit } });
     const results = (data?.results || []).filter(s => s?.title);
-    const out     = { success: true, total: data?.total || results.length, page, results };
+    const out = { success: true, total: data?.total || results.length, page, results };
     if (results.length > 0) cSet(key, out);
     return out;
   } catch (err) {
@@ -177,7 +177,7 @@ export async function getTrending(lang = 'hindi', limit = 20) {
   const hit = cGet(key);
   if (hit) return hit;
 
-  const q      = TRENDING_QUERIES[lang] || `${lang} hits 2024`;
+  const q = TRENDING_QUERIES[lang] || `${lang} hits 2024`;
   const direct = await trySaavnInstances('/search/songs', { query: q, page: 1, limit });
   if (direct) {
     const out = { success: true, language: lang, results: direct.songs };
@@ -186,9 +186,9 @@ export async function getTrending(lang = 'hindi', limit = 20) {
   }
 
   try {
-    const data    = await http.get('/api/trending', { params: { lang, limit } });
+    const data = await http.get('/api/trending', { params: { lang, limit } });
     const results = (data?.results || []).filter(s => s?.title);
-    const out     = { success: true, language: lang, results };
+    const out = { success: true, language: lang, results };
     if (results.length > 0) cSet(key, out);
     return out;
   } catch (err) {
@@ -204,12 +204,12 @@ export async function getSongDetails(id) {
 
   for (const instance of SAAVN_INSTANCES) {
     try {
-      const r    = await instance.get(`/songs/${id}`);
-      const raw  = r.data?.data;
-      const s    = Array.isArray(raw) ? raw[0] : raw;
+      const r = await instance.get(`/songs/${id}`);
+      const raw = r.data?.data;
+      const s = Array.isArray(raw) ? raw[0] : raw;
       const song = normalizeSaavn(s);
       if (song) { const out = { success: true, song }; cSet(key, out); return out; }
-    } catch {}
+    } catch { }
   }
   return { success: false, song: null };
 }
@@ -222,10 +222,10 @@ export async function getSuggestions(id) {
 
   for (const instance of SAAVN_INSTANCES) {
     try {
-      const r     = await instance.get(`/songs/${id}/suggestions`);
+      const r = await instance.get(`/songs/${id}/suggestions`);
       const songs = (r.data?.data || []).map(normalizeSaavn).filter(s => s?.title);
       if (songs.length) { const out = { success: true, results: songs }; cSet(key, out); return out; }
-    } catch {}
+    } catch { }
   }
   return { success: false, results: [] };
 }
@@ -234,19 +234,19 @@ export async function getSuggestions(id) {
 export async function searchAlbums(query, limit = 10) {
   for (const instance of SAAVN_INSTANCES) {
     try {
-      const r       = await instance.get('/search/albums', { params: { query, limit } });
+      const r = await instance.get('/search/albums', { params: { query, limit } });
       const results = r.data?.data?.results || [];
       if (results.length) return { success: true, results };
-    } catch {}
+    } catch { }
   }
   return { success: false, results: [] };
 }
 
 // ─── Auth API ─────────────────────────────────────────────────────────────────
 export const authRegister = (u, e, p) => http.post('/auth/register', { username: u, email: e, password: p });
-export const authLogin    = (e, p)    => http.post('/auth/login',    { email: e, password: p });
-export const authMe       = (token)   => http.get('/auth/me',        { headers: { Authorization: `Bearer ${token}` } });
-export const authStatus   = ()        => http.get('/auth/status');
+export const authLogin = (e, p) => http.post('/auth/login', { email: e, password: p });
+export const authMe = (token) => http.get('/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+export const authStatus = () => http.get('/auth/status');
 
 // ─── Progressive section loader ───────────────────────────────────────────────
 export async function fetchSections(sections, onProgress, delay = 900) {
